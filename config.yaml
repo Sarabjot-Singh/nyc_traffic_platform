@@ -1,0 +1,13 @@
+nyc_api:
+  start_year: 2016
+  start_month: 6
+  output_location: "./data/"
+  refresh_type: "historical"  # Options: "historical" or "incremental"
+
+s3_config:
+  bucket_name: "nyc-traffic-spark-2026"
+  catalogs:
+    yellow_tripdata:
+      raw: "raw/yellow_tripdata"
+      silver: "silver/yellow_tripdata"
+      gold: "gold/yellow_tripdata"

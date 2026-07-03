@@ -1,0 +1,5 @@
+boto3>=1.43.38
+dotenv>=0.9.9
+pyspark>=4.1.2
+pyyaml>=6.0.3
+requests>=2.34.2
