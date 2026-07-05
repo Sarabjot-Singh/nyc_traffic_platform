@@ -45,20 +45,7 @@ def transform_nyc_taxi_data():
     """
     Transform NYC taxi data from raw to processed format.
     """
-    try:
-        logger.info(f"{favicon['info']} Starting NYC taxi data transformation")
-        # Load the configuration file
-        # CONFIG_PATH = os.path.join(project_root, 'src', 'transformation', 'transformation_config.yaml')
-        
-
-        df = spark.read.parquet(r"s3a://nyc-traffic-spark-2026/raw/yellow_tripdata/2025/yellow_tripdata_2015-01.parquet")
-        logger.info(f"{favicon['info']} Data loaded from S3")
-        df.printSchema()
-        logger.info(f"{favicon['right']} NYC taxi data transformation completed successfully")
-        # df.show()
-    except Exception as e:
-        logger.error(f"{favicon['error']} Error during transformation: %s", str(e))
-        raise
+    
 
 
 if __name__ == "__main__":

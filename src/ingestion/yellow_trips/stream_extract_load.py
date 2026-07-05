@@ -18,6 +18,7 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as file:
 
 logger = get_logger()
 
+
 def get_historical_data(year, month) -> None:
     """
     Get historical data from the NYC Taxi CDN.
@@ -65,19 +66,43 @@ def get_historical_data(year, month) -> None:
 
 def get_current_month_data():
     """Will be run monthly once to fetch data for the latest month."""
-    pass
+
+    s3_client = S3Util()
+    raw = config["s3_config"]["catalogs"]["yellow_tripdata"]["raw"]
+    bucket_name = config["s3_config"]["bucket_name"]
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    year_month = str(current_year) + '-' + str(current_month)
+
+    logger.info(f"{favicon['info']} Fetching data for %s", year_month)
+    url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year_month}.parquet"
+
+    with requests.get(url, stream=True) as response:
+        response.raise_for_status()
+        s3_key = rf"{raw}/year={current_year}/yellow_tripdata_{year_month}.parquet"
+        
+        # Stream response.raw directly to S3
+        s3_client.upload_fileobj(
+            file_obj=response.raw, 
+            bucket_name=bucket_name, 
+            object_key=s3_key,
+        )
+    
+    logger.info(f"{favicon['right']} Successfully uploaded %s to S3", s3_key)
 
 
 if __name__ == "__main__":
     logger.info(f"{favicon['info']} Start fetching data from NYC CDN")
-    year = config["nyc_api"]["start_year"]
-    month = config["nyc_api"]["start_month"]
     refresh_type= config["nyc_api"]["refresh_type"]
 
     if refresh_type == "historical":
+        year = config["nyc_api"]["start_year"]
+        month = config["nyc_api"]["start_month"]
         get_historical_data(year, month)
-    elif refresh_type == "current":
+
+    elif refresh_type == "incremental":
         get_current_month_data()
+    
     else:
         logger.error(f"{favicon['error']} Invalid refresh_type specified in the configuration: %s", refresh_type)
         raise ValueError(f"Invalid refresh_type specified in the configuration: {refresh_type}")

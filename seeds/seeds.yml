@@ -1,0 +1,12 @@
+seeds:
+  dim_vendors:
+    path: "./seeds/dim_vendors.csv"
+
+  dim_ratecode:
+    path: "./seeds/dim_ratecode.csv"
+
+  dim_payment_method:
+    path: "./seeds/dim_payment_method.csv"
+
+  dim_location:
+    path: "./seeds/dim_location.csv"
