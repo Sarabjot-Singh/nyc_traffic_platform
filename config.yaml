@@ -1,13 +1,23 @@
-nyc_api:
-  start_year: 2016
-  start_month: 6
-  output_location: "./data/"
-  refresh_type: "incremental"  # Options: "historical" or "incremental"
+project:
+  name: nyc_taxi_platform
 
-s3_config:
-  bucket_name: "nyc-traffic-spark-2026"
-  catalogs:
-    yellow_tripdata:
-      raw: "raw/yellow_tripdata"
-      silver: "silver/yellow_tripdata"
-      gold: "gold/yellow_tripdata"
+storage:
+  bucket_name: nyc-traffic-spark-2026
+
+layers:
+  bronze: raw
+  silver: silver
+  gold: gold
+
+datasets:
+  yellow_trip:
+    source_name: yellow_tripdata
+    start_year: 2015
+    start_month: 1
+    end_year: 2024
+    end_month: 8
+
+  green_trip:
+    source_name: green_tripdata
+    start_year: 2015
+    start_month: 1
