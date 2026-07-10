@@ -19,7 +19,7 @@ class SparkManager:
             )
             .config("spark.jars.ivy", "/tmp/.ivy2")
             # MinIO
-            .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
+            .config("spark.hadoop.fs.s3a.endpoint", os.getenv("MINIO_URL"))
             .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_ROOT_USER"))
             .config("spark.hadoop.fs.s3a.secret.key", os.getenv("MINIO_ROOT_PASSWORD"))
             .config("spark.hadoop.fs.s3a.path.style.access", "true")

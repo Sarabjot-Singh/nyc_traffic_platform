@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 
 
-class DimensionalModel(ABC):
+class Model(ABC):
     """
     Abstract base class for dimensional models.
     """

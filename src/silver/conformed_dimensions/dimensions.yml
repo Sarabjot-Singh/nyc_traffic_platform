@@ -1,0 +1,33 @@
+dimensions:
+  - name: vendor
+    module: dim_vendors
+    module_path: src.transformation.conformed_dimensions.dim_vendors
+    class: DimVendors
+    load_method: overwrite
+    order: 1
+    enabled: True
+    
+
+  - name: rate_code
+    module: dim_rate_code
+    module_path: src.transformation.conformed_dimensions.dim_rate_code
+    class: DimRateCode
+    load_method: overwrite
+    order: 2
+    enabled: True
+
+  - name: payment_method
+    module: dim_payment_method
+    module_path: src.transformation.conformed_dimensions.dim_payment_method
+    class: DimPaymentMethod
+    load_method: overwrite
+    order: 3
+    enabled: True
+
+  - name: location
+    module: dim_location
+    module_path: src.transformation.conformed_dimensions.dim_location
+    class: DimLocation
+    load_method: overwrite
+    order: 4
+    enabled: True

@@ -12,25 +12,23 @@ if str(project_root) not in sys.path:
 
 from src.common.logger import get_logger
 from src.common.favicon import favicon
-from src.common.spark import SparkManager
-from src.transformation.common_dimensions.dimensionalModel import DimensionalModel
+from src.silver.base import Model
 
 logger = get_logger()
-
-spark = SparkManager("dim_payment_method").get_spark_session()
 
 with open('./seeds/seeds.yml', 'r') as file:
     config = yaml.safe_load(file)
 
 
 
-class DimPaymentMethod(DimensionalModel):
+class DimPaymentMethod(Model):
 
-    def __init__(self):
+    def __init__(self, spark_session):
         self.schema = StructType([
                 StructField("payment_method_id", IntegerType(), False),
                 StructField("description", StringType(), False)
             ])
+        self.spark = spark_session
     
     def initial_load(self):
         """
@@ -39,7 +37,7 @@ class DimPaymentMethod(DimensionalModel):
         try:
             logger.info(f"{favicon['info']} Starting dim_payment_method transformation")
 
-            rate_code_df = spark.read.format('csv') \
+            rate_code_df = self.spark.read.format('csv') \
                                 .schema(self.schema) \
                                 .option('header', True) \
                                 .option('mergeSchema', True) \
@@ -63,11 +61,11 @@ class DimPaymentMethod(DimensionalModel):
         If found, it checks for new vendors in seed files and appends them to the existing dim_payment_method table.
         """
         try:
-            original_df = spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
+            original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
 
             logger.info(f"{favicon['info']} dim_ratecode table found in S3, checking for new vendors...")
 
-            incoming_vendors_df = spark.read.format('csv') \
+            incoming_vendors_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -89,7 +87,3 @@ class DimPaymentMethod(DimensionalModel):
             return None
 
 
-if __name__ == '__main__':
-    dim_payment_method = DimPaymentMethod()
-    df = dim_payment_method.initial_load()
-    df.show()

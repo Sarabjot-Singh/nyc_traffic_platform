@@ -7,7 +7,9 @@ requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.43.38",
     "dotenv>=0.9.9",
+    "psycopg2-binary>=2.9.12",
     "pyspark>=4.1.2",
     "pyyaml>=6.0.3",
     "requests>=2.34.2",
+    "sqlalchemy>=2.0.51",
 ]

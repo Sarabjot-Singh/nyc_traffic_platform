@@ -12,27 +12,25 @@ if str(project_root) not in sys.path:
 
 from src.common.logger import get_logger
 from src.common.favicon import favicon
-from src.common.spark import SparkManager
-from src.transformation.common_dimensions.dimensionalModel import DimensionalModel
+from src.silver.base import Model
 
 logger = get_logger()
-
-spark = SparkManager("dim_location").get_spark_session()
 
 with open('./seeds/seeds.yml', 'r') as file:
     config = yaml.safe_load(file)
 
 
 
-class DimLocation(DimensionalModel):
+class DimLocation(Model):
 
-    def __init__(self):
+    def __init__(self, spark_session):
         self.schema = StructType([
                 StructField("location_id", IntegerType(), False),
                 StructField("borough", StringType(), True),
                 StructField("zone", StringType(), True),
                 StructField("service_zone", StringType(), True),
             ])
+        self.spark = spark_session
     
     def initial_load(self):
         """
@@ -41,7 +39,7 @@ class DimLocation(DimensionalModel):
         try:
             logger.info(f"{favicon['info']} Starting dim_location transformation")
 
-            rate_code_df = spark.read.format('csv') \
+            rate_code_df = self.spark.read.format('csv') \
                                 .schema(self.schema) \
                                 .option('header', True) \
                                 .option('mergeSchema', True) \
@@ -49,7 +47,7 @@ class DimLocation(DimensionalModel):
             
             rate_code_df = rate_code_df.withColumn("location_sk", row_number().over(
                 Window.orderBy("location_id")
-            )).select("location_sk", "location_id", "description")
+            )).select("location_sk", "location_id", "borough", "zone", "service_zone")
             
             logger.info(f"{favicon['right']} dim_location transformation completed successfully")
             return rate_code_df
@@ -65,11 +63,11 @@ class DimLocation(DimensionalModel):
         If found, it checks for new vendors in seed files and appends them to the existing dim_location table.
         """
         try:
-            original_df = spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_location.parquet")
+            original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_location.parquet")
 
             logger.info(f"{favicon['info']} dim_location table found in S3, checking for new vendors...")
 
-            incoming_vendors_df = spark.read.format('csv') \
+            incoming_vendors_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -89,9 +87,3 @@ class DimLocation(DimensionalModel):
         except Exception as e:
             logger.error(f"{favicon['error']} Error while reading dim_location from S3: %s", str(e))
             return None
-
-
-if __name__ == '__main__':
-    dim_location = DimLocation()
-    df = dim_location.initial_load()
-    df.show()

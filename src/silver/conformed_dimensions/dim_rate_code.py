@@ -12,25 +12,23 @@ if str(project_root) not in sys.path:
 
 from src.common.logger import get_logger
 from src.common.favicon import favicon
-from src.common.spark import SparkManager
-from src.transformation.common_dimensions.dimensionalModel import DimensionalModel
+from src.silver.base import Model
 
 logger = get_logger()
-
-spark = SparkManager("dim_rate_code").get_spark_session()
 
 with open('./seeds/seeds.yml', 'r') as file:
     config = yaml.safe_load(file)
 
 
 
-class DimRateCode(DimensionalModel):
+class DimRateCode(Model):
 
-    def __init__(self):
+    def __init__(self, spark_session):
         self.schema = StructType([
                 StructField("rate_code_id", IntegerType(), False),
                 StructField("description", StringType(), False)
             ])
+        self.spark = spark_session
     
     def initial_load(self):
         """
@@ -39,7 +37,7 @@ class DimRateCode(DimensionalModel):
         try:
             logger.info(f"{favicon['info']} Starting dim_rate_code transformation")
 
-            rate_code_df = spark.read.format('csv') \
+            rate_code_df = self.spark.read.format('csv') \
                                 .schema(self.schema) \
                                 .option('header', True) \
                                 .option('mergeSchema', True) \
@@ -63,11 +61,11 @@ class DimRateCode(DimensionalModel):
         If found, it checks for new vendors in seed files and appends them to the existing dim_rate_code table.
         """
         try:
-            original_df = spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
+            original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
 
             logger.info(f"{favicon['info']} dim_ratecode table found in S3, checking for new vendors...")
 
-            incoming_vendors_df = spark.read.format('csv') \
+            incoming_vendors_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -87,9 +85,4 @@ class DimRateCode(DimensionalModel):
         except Exception as e:
             logger.error(f"{favicon['error']} Error while reading dim_rate_code from S3: %s", str(e))
             return None
-
-
-if __name__ == '__main__':
-    dim_ratecode = DimRateCode()
-    df = dim_ratecode.initial_load()
-    df.show()
+    
