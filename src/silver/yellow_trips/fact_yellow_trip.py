@@ -37,14 +37,26 @@ bucket_name = config['storage']['bucket_name']
 
 # Silver fact model for the yellow taxi dataset.
 class FactYellowTrips(Model):
+    """Build and maintain the yellow taxi silver fact table."""
 
     def __init__(self):
+        """Initialize the model with its target destination path and logical name."""
         self.name = __file__.split('/')[-1].split('.')[0]
         self.destination = rf"s3a://{bucket_name}/{silver}/{fact_name}/"
 
     def __curate_dataset(self, spark, df):
-        """
-        Transform NYC taxi data from raw to processed format by adding relevant surrogate keys.
+        """Curate a bronze dataframe into the silver fact schema.
+
+        The method filters out invalid future rows, generates a stable trip identifier,
+        enriches the data with surrogate keys from dimension tables, and reshapes the
+        fields into the fact-table structure used by the silver layer.
+
+        Args:
+            spark: Active Spark session.
+            df: Input dataframe from the bronze layer.
+
+        Returns:
+            DataFrame: Curated dataframe ready for silver storage.
         """
         # Load the dimensional lookup tables needed for surrogate-key enrichment.
         logger.info(f"{favicon['info']} Loading all the dimensions for Surrogate Keys")
@@ -108,6 +120,11 @@ class FactYellowTrips(Model):
                                             
     
     def initial_load(self, spark):
+        """Build the silver fact table from every successfully ingested bronze file.
+
+        Args:
+            spark: Active Spark session used to read bronze data and write the Delta table.
+        """
         # Load all bronze files that were successfully ingested and build the silver fact table.
         bronze_processed_file_query = QueryStore.get_successful_bronze_files()
         
@@ -143,6 +160,11 @@ class FactYellowTrips(Model):
 
 
     def incremental_load(self, spark):
+        """Apply the latest bronze data to the Delta fact table incrementally.
+
+        Args:
+            spark: Active Spark session used for reading new records and merging them.
+        """
         # Apply the latest bronze files to the Delta fact table incrementally.
         database_obj = Database()
 

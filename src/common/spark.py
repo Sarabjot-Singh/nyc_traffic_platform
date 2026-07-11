@@ -7,7 +7,18 @@ load_dotenv()
 
 # Shared helper for creating and reusing the Spark session used by the pipeline.
 class SparkManager:
+    """Create and reuse a Spark session configured for the NYC taxi pipeline.
+
+    The session is initialized with the required Delta and S3-compatible settings so
+    downstream bronze and silver jobs can share the same execution context.
+    """
+
     def __init__(self, app_name: str = "NYC Taxi Transformation"):
+        """Initialize the Spark session for the provided application name.
+
+        Args:
+            app_name: Name to assign to the Spark application.
+        """
         self.spark = (
             SparkSession.builder
             .appName(app_name)
@@ -31,5 +42,10 @@ class SparkManager:
         ).getOrCreate()
 
     def get_spark_session(self):
+        """Return the configured Spark session instance.
+
+        Returns:
+            SparkSession: The shared Spark session for the pipeline.
+        """
         # Return the existing Spark session so downstream jobs can reuse it.
         return self.spark

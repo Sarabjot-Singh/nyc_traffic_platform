@@ -35,8 +35,18 @@ def ingest_data(
         end_year=datetime.now().year, 
         end_month=datetime.now().month
     ) -> None:
-    """
-    Get historical data from the NYC Taxi CDN.
+    """Ingest NYC taxi parquet files for a range of year-month partitions.
+
+    The function downloads each parquet file from the public NYC Taxi source,
+    validates it with the bronze schema, and writes it to the configured bronze
+    storage location while recording its status in the metadata table.
+
+    Args:
+        spark: Active Spark session used to read and write parquet data.
+        start_year: Starting year of the ingestion range.
+        start_month: Starting month of the ingestion range.
+        end_year: Ending year of the ingestion range.
+        end_month: Ending month of the ingestion range.
     """
 
     # Read the bronze storage location and dataset identity from configuration.
