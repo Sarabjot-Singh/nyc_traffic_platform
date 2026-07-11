@@ -1,4 +1,4 @@
-'''CREATE TABLE metadata.ingestion_log
+'''CREATE TABLE metadata.raw_ingestion_log
 (
     id           SERIAL PRIMARY KEY,
     file_name    VARCHAR(255) NOT NULL,
@@ -9,7 +9,7 @@
 );'''
 
 '''
-CREATE TABLE metadata.silver_load_log
+CREATE TABLE metadata.silver_ingestion_log
 (
     id           SERIAL PRIMARY KEY,
     file_name    VARCHAR(255) NOT NULL,
@@ -26,7 +26,7 @@ class QueryStore:
     @staticmethod
     def ingestion_log(file_name, source, destination, status):
         query = f'''
-            INSERT INTO metadata.ingestion_log
+            INSERT INTO metadata.raw_ingestion_log
             (
                 file_name,
                 source,
@@ -47,7 +47,7 @@ class QueryStore:
     @staticmethod
     def silver_load_log(file_name, source, destination, status, method='overwrite'):
         query = f'''
-            INSERT INTO metadata.silver_load_log
+            INSERT INTO metadata.silver_ingestion_log
             (
                 file_name,
                 source,
@@ -74,7 +74,7 @@ class QueryStore:
                 SELECT 
                     *
                     , ROW_NUMBER() OVER(ORDER BY processed_at DESC) AS rn 
-                FROM metadata.ingestion_log
+                FROM metadata.raw_ingestion_log
                 WHERE status = 'SUCCESS'
             )
             SELECT 
@@ -90,7 +90,7 @@ class QueryStore:
         query = '''
             SELECT
                 DISTINCT destination
-            FROM metadata.ingestion_log
+            FROM metadata.raw_ingestion_log
             WHERE status = 'SUCCESS';
         '''
         return query

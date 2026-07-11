@@ -22,7 +22,7 @@ logger = get_logger()
 spark = SparkManager("build_dimensions").get_spark_session()
 s3_util = S3Util()
 
-with open('./src/transformation/conformed_dimensions/dimensions.yml', 'r') as file:
+with open('./src/silver/dimensions.yml', 'r') as file:
     dimensional_config = yaml.safe_load(file)
 
 with open('config.yaml', 'r') as file:

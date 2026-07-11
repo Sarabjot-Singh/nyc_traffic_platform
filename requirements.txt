@@ -5,3 +5,4 @@ pyyaml>=6.0.3
 requests>=2.34.2
 psycopg2-binary>=2.9.12
 sqlalchemy>=2.0.51
+delta-spark==4.0.1

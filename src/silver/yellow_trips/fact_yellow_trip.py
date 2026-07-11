@@ -1,5 +1,7 @@
 import sys
 import yaml
+from delta.tables import DeltaTable
+from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from pyspark.sql.functions import *
 from dotenv import load_dotenv
@@ -21,11 +23,22 @@ logger = get_logger()
 with open('config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
+with open('./src/silver/facts.yml', 'r') as fact_config_file:
+    fact_config = yaml.safe_load(fact_config_file)
 
-class YellowTrips(Model):
+####################################
+#  Defining config Variables
+####################################
+fact_name = fact_config['facts']['fact_yellow_trips']['name']
+silver = config['layers']['silver']
+bucket_name = config['storage']['bucket_name']
+
+
+class FactYellowTrips(Model):
 
     def __init__(self):
-        pass
+        self.name = __file__.split('/')[-1].split('.')[0]
+        self.destination = rf"s3a://{bucket_name}/{silver}/{fact_name}/"
 
     def __curate_dataset(self, spark, df):
         """
@@ -39,8 +52,14 @@ class YellowTrips(Model):
         dim_location = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_location").select('location_id', 'location_sk')
         
         fact_yellowtrip_df = df
+        # prefiltering data to eliminate any future rows or rows from ery past
+        fact_yellowtrip_df = fact_yellowtrip_df.filter(
+                (to_date(col('tpep_pickup_datetime')) >= to_date(lit('2015-01-01'), 'yyyy-MM-dd')) & \
+                (to_date(col('tpep_pickup_datetime')) <= current_date())
+            )
+        
         # Adding Trip Id for each row
-        trip_id_hash_candidates = ['VendorID', 'RateCodeID', 'PULocationID', 'DOLocationID', 'payment_type', 'tpep_pickup_datetime', 'tpep_dropoff_datetime']
+        trip_id_hash_candidates = fact_yellowtrip_df.columns
         fact_yellowtrip_df =fact_yellowtrip_df.withColumn(
             'trip_id', sha2(concat_ws("||", *[col(c) for c in trip_id_hash_candidates]), 256)
         )
@@ -88,6 +107,7 @@ class YellowTrips(Model):
     
     def initial_load(self, spark):
         bronze_processed_file_query = QueryStore.get_successful_bronze_files()
+        
         database_obj = Database()
         rs = database_obj.execute(bronze_processed_file_query)
         result = rs.fetchall()
@@ -95,63 +115,77 @@ class YellowTrips(Model):
         files = [file[0] for file in result]
         
         for file in files:
+            logger.info(f"{favicon['info']} Building fact from file {file}")
             fact_yellowtrip_df = spark.read.parquet(file)
             fact_yellowtrip_df = self.__curate_dataset(spark, fact_yellowtrip_df)
-            yield fact_yellowtrip_df, file
+            try:
+                query = QueryStore().silver_load_log(self.name, file, self.destination, 'UPLOADING', 'append')
+                database_obj.execute(query=query)
+                
+                fact_yellowtrip_df \
+                        .write \
+                        .format('delta') \
+                        .mode('overwrite') \
+                        .partitionBy('year', 'month') \
+                        .save(self.destination)
+            
+                query = QueryStore().silver_load_log(self.name, file, self.destination, 'SUCCESS', 'append')
+                database_obj.execute(query=query)
+                logger.info(f"{favicon['right']} Building fact from file {file}")
+
+            except:
+                logger.info(f"{favicon['error']} Failed building fact from file {file}")
+                query = QueryStore().silver_load_log(self.name, file, self.destination, 'FAILED', 'append')
+                database_obj.execute(query=query)
+
 
     def incremental_load(self, spark):
-        get_latest_files_query = QueryStore().get_n_latest_files(3)
         database_obj = Database()
+
+        #################################################################
+        # Get paths of two last inserted file from Raw Layer
+        #################################################################
+        get_latest_files_query = QueryStore().get_n_latest_files(1)
         rs = database_obj.execute(get_latest_files_query)
         sources = rs.fetchall()
         file_path = [source[0] for source in sources]
+        
+        ##############################################################################################################
+        # Reading Last Two months of data from raw layer
+        # This is done to prevent file not found exception in case latest partition is not present in datalake
+        ##############################################################################################################     
         fact_yellowtrip_df_new_records = spark.read.parquet(*file_path)
+        fact_yellowtrip_df_new_records = fact_yellowtrip_df_new_records.filter(
+                (to_date(col('tpep_pickup_datetime')) >= to_date(lit('2015-01-01'), 'yyyy-MM-dd')) & \
+                (to_date(col('tpep_pickup_datetime')) <= current_date())
+            )
         fact_yellowtrip_df_new_records = self.__curate_dataset(spark, fact_yellowtrip_df_new_records)
 
-        fact_yellowtrip_dfs = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/")
+        fact_yellowtrip_delta_table = DeltaTable.forPath(spark, self.destination)
 
-        for fact_yellowtrip_df in fact_yellowtrip_dfs:
-            fact_yellowtrip_df.show()
-            return 
-        
-        # return fact_yellowtrip_df
+        logger.info(f"{favicon['info']}")
+        fact_yellowtrip_delta_table.alias("TARGET").merge(
+            source=fact_yellowtrip_df_new_records.alias("SOURCE"),
+            condition="""
+                TARGET.trip_id = SOURCE.trip_id 
+                AND TARGET.year = SOURCE.year 
+                AND TARGET.month = SOURCE.month
+            """ 
+        ) \
+        .withSchemaEvolution() \
+        .whenMatchedUpdateAll() \
+        .whenNotMatchedInsertAll() \
+        .execute()
+
+        return
 
 
 if __name__ == '__main__':
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
+    logger.info(f"{favicon['info']} Building {fact_name}...")
+    yt = FactYellowTrips()
 
-    yt = YellowTrips()
+    yt.incremental_load(spark)
 
-    silver = config['layers']['silver']
-    bucket_name = config['storage']['bucket_name']
-    db_obj = Database()
-
-    name = 'fact_yellow_trip'
-    logger.info(f"{favicon['info']} Building Fact {name}")
-    s3_key = rf"s3a://{bucket_name}/{silver}/{name}/"
-
-    dfs = yt.initial_load(spark)
-
-    for fact_yellowtrip_df, file in dfs:
-        try:
-            query = QueryStore().silver_load_log(name, file, s3_key, 'UPLOADING', 'append')
-            db_obj.execute(query=query)
-            
-            fact_yellowtrip_df.write.partitionBy('year', 'month') \
-                    .mode('append') \
-                    .parquet(s3_key)
-        
-            query = QueryStore().silver_load_log(name, file, s3_key, 'SUCCESS', 'append')
-            db_obj.execute(query=query)
-        
-        except:
-            query = QueryStore().silver_load_log(name, file, s3_key, 'FAILED', 'append')
-            db_obj.execute(query=query)
-
-
-
-    
-
-
-
+    logger.info(f"{favicon['right']} Successfully Built the {fact_name}")

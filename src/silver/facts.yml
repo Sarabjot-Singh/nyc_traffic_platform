@@ -1,0 +1,9 @@
+facts:
+  fact_yellow_trips:
+    name: fact_yellow_trip
+    module: fact_yellow_trip
+    module_path: src.silver.yellow_trips.fact_yellow_trip
+    class: FactYellowTrips
+    load_method: merge
+    table_type: DeltaLake
+    enabled: True
