@@ -25,6 +25,9 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as file:
 logger = get_logger()
 
 
+# Ingest NYC taxi parquet files from the public source and stage them in the bronze layer.
+# This function walks through a range of year-month partitions and processes each file
+# independently so the pipeline can recover gracefully from partial failures.
 def ingest_data(
         spark, 
         start_year, 
@@ -36,20 +39,27 @@ def ingest_data(
     Get historical data from the NYC Taxi CDN.
     """
 
-    # S3 Location Configuration Variables
+    # Read the bronze storage location and dataset identity from configuration.
+    # These values determine where the staged files are written and which dataset is ingested.
     raw = config["layers"]["bronze"]
     bucket_name = config["storage"]["bucket_name"]
     source_name = config['datasets']['yellow_trip']['source_name']
     database_obj = Database()
 
-    # Additional variables for tracking the current year and month
+    # Build the sequence of year-month partitions to process.
+    # The loop expands the requested start/end range into a list of monthly buckets.
     year_month_list = []
 
     while start_year <= end_year:
+        # Stop once the current month reaches the requested end month.
         if start_year == end_year and start_month == end_month:
             break
+
+        # Normalize the month to a two-digit string so the partition names are consistent.
         month_str = "0" + str(start_month) if len(str(start_month)) == 1 else str(start_month)
         year_month_list.append(str(start_year) + "-" + month_str)
+
+        # Advance to the next month, rolling over to the next year when needed.
         if start_month == 12:
             start_month = 1
             start_year += 1
@@ -69,11 +79,14 @@ def ingest_data(
         """)
         is_file_present = rs.fetchone()[0]
         
+        # Skip files that already completed successfully in the metadata log.
+        # This prevents duplicate work and keeps repeated runs idempotent.
         if not is_file_present:
             try:
                 upload_query = QueryStore().ingestion_log(file_name, url, s3_key, 'UPLOADING')
                 database_obj.execute(query=upload_query, params={})
 
+                # Download the parquet file to a temporary location before loading it with Spark.
                 with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
 
                     with requests.get(url, stream=True) as response:
@@ -83,25 +96,31 @@ def ingest_data(
                     # Make sure all bytes are written
                     tmp.flush()
 
-                    # Read using Spark
+                    # Read the temporary parquet file with Spark so the data can be validated
+                    # and cast to the expected schema before writing to the bronze layer.
                     df = spark.read.parquet(tmp.name)
 
+                    # Apply the bronze schema definitions only where the source columns exist.
                     for column, dtype in schema.items():
                         if column in df.columns:
                             df = df.withColumn(column, col(column).cast(dtype))
 
                     df.printSchema()
             
+                    # Write the curated parquet data to the bronze storage path.
                     df.write \
                         .mode("append") \
                         .parquet(s3_key)
 
+                # Record a successful bronze load in the metadata table.
+                # This gives downstream jobs a reliable audit trail for processed files.
                 success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'SUCCESS')
                 database_obj.execute(query=success_query, params={})
                 logger.info(f"{favicon['right']} Successfully uploaded %s to S3", s3_key)
 
             except Exception as e:
                 logger.info(f"{favicon['error']} Error occured during uploading file to S3: ", e)
+                # Mark the file as failed so it can be retried later by the next run.
                 success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'FAILED')
                 database_obj.execute(query=success_query, params={})
 
@@ -110,6 +129,7 @@ def ingest_data(
 
 
 if __name__ == "__main__":
+    # Entry point for running the bronze ingestion job from the command line.
     logger.info(f"{favicon['info']} Start fetching data from NYC CDN")
     source_name = config['datasets']['yellow_trip']['source_name']
     spark_obj = SparkManager()

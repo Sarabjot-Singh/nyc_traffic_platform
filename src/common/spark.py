@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Shared helper for creating and reusing the Spark session used by the pipeline.
 class SparkManager:
     def __init__(self, app_name: str = "NYC Taxi Transformation"):
         self.spark = (
@@ -30,4 +31,5 @@ class SparkManager:
         ).getOrCreate()
 
     def get_spark_session(self):
+        # Return the existing Spark session so downstream jobs can reuse it.
         return self.spark

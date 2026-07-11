@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 load_dotenv()
 
 
+# Lightweight wrapper around SQLAlchemy for database access in the pipeline.
 class Database:
     def __init__(self):
         self.engine = create_engine(
@@ -20,6 +21,7 @@ class Database:
         )
 
     def execute(self, query: str, params: dict | None = None):
+        # Run a SQL statement and return the underlying result handle.
         """
         Execute INSERT, UPDATE, DELETE or DDL statements.
         """
@@ -31,6 +33,7 @@ class Database:
             raise Exception(f"Database Error: {e}")
 
     def fetch_one(self, query: str, params: dict | None = None):
+        # Fetch a single row from the database.
         """
         Fetch a single row.
         """
@@ -42,6 +45,7 @@ class Database:
             raise Exception(f"Database Error: {e}")
 
     def fetch_all(self, query: str, params: dict | None = None):
+        # Fetch all matching rows from the database.
         """
         Fetch all rows.
         """
@@ -53,6 +57,7 @@ class Database:
             raise Exception(f"Database Error: {e}")
 
     def test_connection(self):
+        # Check whether the configured database connection is available.
         """
         Returns True if connection succeeds.
         """

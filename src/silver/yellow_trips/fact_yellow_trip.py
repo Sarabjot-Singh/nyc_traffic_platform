@@ -29,11 +29,13 @@ with open('./src/silver/facts.yml', 'r') as fact_config_file:
 ####################################
 #  Defining config Variables
 ####################################
+# Load the silver fact configuration and target storage layer settings.
 fact_name = fact_config['facts']['fact_yellow_trips']['name']
 silver = config['layers']['silver']
 bucket_name = config['storage']['bucket_name']
 
 
+# Silver fact model for the yellow taxi dataset.
 class FactYellowTrips(Model):
 
     def __init__(self):
@@ -42,9 +44,9 @@ class FactYellowTrips(Model):
 
     def __curate_dataset(self, spark, df):
         """
-        Transform NYC taxi data from raw to processed format by adding relevant surrogate keys
+        Transform NYC taxi data from raw to processed format by adding relevant surrogate keys.
         """
-        # Load dimensions
+        # Load the dimensional lookup tables needed for surrogate-key enrichment.
         logger.info(f"{favicon['info']} Loading all the dimensions for Surrogate Keys")
         dim_vendor = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_vendors").select('vendor_id', 'vendor_sk')
         dim_rate_code = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_rate_code").select('rate_code_id', 'rate_code_sk')
@@ -58,13 +60,13 @@ class FactYellowTrips(Model):
                 (to_date(col('tpep_pickup_datetime')) <= current_date())
             )
         
-        # Adding Trip Id for each row
+        # Create a stable business key for each trip record.
         trip_id_hash_candidates = fact_yellowtrip_df.columns
         fact_yellowtrip_df =fact_yellowtrip_df.withColumn(
             'trip_id', sha2(concat_ws("||", *[col(c) for c in trip_id_hash_candidates]), 256)
         )
 
-        logger.info(f"{favicon['info']} Transforming Fact table to include surrogate keys from dimensions")
+        logger.info(f"{favicon['info']} Transforming fact table to include surrogate keys from dimensions")
         fact_yellowtrip_df = fact_yellowtrip_df \
                 .join(broadcast(dim_vendor), on=fact_yellowtrip_df['VendorID'] == dim_vendor['vendor_id'], how='left') \
                 .join(broadcast(dim_rate_code), on=fact_yellowtrip_df['RateCodeID'] == dim_rate_code['rate_code_id'], how='left') \
@@ -106,6 +108,7 @@ class FactYellowTrips(Model):
                                             
     
     def initial_load(self, spark):
+        # Load all bronze files that were successfully ingested and build the silver fact table.
         bronze_processed_file_query = QueryStore.get_successful_bronze_files()
         
         database_obj = Database()
@@ -140,6 +143,7 @@ class FactYellowTrips(Model):
 
 
     def incremental_load(self, spark):
+        # Apply the latest bronze files to the Delta fact table incrementally.
         database_obj = Database()
 
         #################################################################
