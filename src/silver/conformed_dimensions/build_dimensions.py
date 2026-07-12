@@ -38,12 +38,14 @@ if __name__ == '__main__':
 
     for dimension in dimensions:
         name = dimension['name']
-        # logger.info(f"{favicon["info"]} Working on dimension - {name}")
+        logger.info(f"{favicon['info']} Working on dimension - {name}")
         module = dimension['module']
         module_path = dimension['module_path']
         class_name = dimension['class']
         enabled = dimension['enabled']
         load_method = dimension['load_method']
+        format = dimension['format']
+
         s3_key = rf"s3a://{bucket_name}/{silver}/{module}/"
 
         query = QueryStore().silver_load_log(module, 'seed_file', s3_key, 'UPLOADING', load_method)
@@ -56,8 +58,12 @@ if __name__ == '__main__':
 
         df = dimension_obj.initial_load()
         
-        df.write.mode(load_method) \
-                .parquet(s3_key)
+        df.write \
+            .format(format) \
+            .mode(load_method) \
+            .save(s3_key)
+        
+        logger.info(f"{favicon['right']} Successfully created dimension - {name}")
         
         query = QueryStore().silver_load_log(module, 'seed_file', s3_key, 'SUCCESS', load_method)
         db_obj.execute(query=query)

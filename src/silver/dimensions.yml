@@ -4,6 +4,7 @@ dimensions:
     module_path: src.silver.conformed_dimensions.dim_vendors
     class: DimVendors
     load_method: overwrite
+    format: delta
     order: 1
     enabled: True
 
@@ -12,6 +13,7 @@ dimensions:
     module_path: src.silver.conformed_dimensions.dim_rate_code
     class: DimRateCode
     load_method: overwrite
+    format: delta
     order: 2
     enabled: True
 
@@ -20,6 +22,7 @@ dimensions:
     module_path: src.silver.conformed_dimensions.dim_payment_method
     class: DimPaymentMethod
     load_method: overwrite
+    format: delta
     order: 3
     enabled: True
 
@@ -28,5 +31,6 @@ dimensions:
     module_path: src.silver.conformed_dimensions.dim_location
     class: DimLocation
     load_method: overwrite
+    format: delta
     order: 4
     enabled: True
