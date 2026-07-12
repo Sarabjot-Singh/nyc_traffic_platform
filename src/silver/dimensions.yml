@@ -34,3 +34,12 @@ dimensions:
     format: delta
     order: 4
     enabled: True
+
+  - name: date
+    module: dim_date
+    module_path: src.silver.conformed_dimensions.dim_date
+    class: DimDate
+    load_method: overwrite
+    format: delta
+    order: 5
+    enabled: True

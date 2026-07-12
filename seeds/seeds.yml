@@ -10,3 +10,6 @@ seeds:
 
   dim_location:
     path: "./seeds/dim_location.csv"
+
+  dim_date:
+    path: "./seeds/dim_date.csv"
