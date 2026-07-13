@@ -43,22 +43,22 @@ class DimDate(Model):
         """
             Create the dim_date dimension table from seed data.
         """
-        # try:
-        logger.info(f"{favicon['info']} Starting dim_date transformation")
+        try:
+            logger.info(f"{favicon['info']} Starting dim_date transformation")
 
-        date_df = self.spark.read.format('csv') \
-                            .schema(self.schema) \
-                            .option('header', True) \
-                            .option('mergeSchema', True) \
-                            .load(config['seeds']['dim_date']['path'])
-        
-        date_df.show()
-        logger.info(f"{favicon['right']} dim_date transformation completed successfully")
-        return date_df
+            date_df = self.spark.read.format('csv') \
+                                .schema(self.schema) \
+                                .option('header', True) \
+                                .option('mergeSchema', True) \
+                                .load(config['seeds']['dim_date']['path'])
+            
+            date_df.show()
+            logger.info(f"{favicon['right']} dim_date transformation completed successfully")
+            return date_df
 
-        # except Exception as e:
-        #     logger.error(f"{favicon['error']} Error during dim_date transformation: %s", str(e))
-        #     return None
+        except Exception as e:
+            logger.error(f"{favicon['error']} Error during dim_date transformation: %s", str(e))
+            return None
         
         
     def incremental_load(self):
