@@ -22,6 +22,10 @@ CONFIG_PATH = 'config.yaml'
 with open(CONFIG_PATH, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
+RAW_CONFIG_PATH = './src/bronze/raw_config.yml'
+with open(RAW_CONFIG_PATH, "r", encoding="utf-8") as file:
+    raw_config = yaml.safe_load(file)
+
 logger = get_logger()
 
 
@@ -53,7 +57,7 @@ def ingest_data(
     # These values determine where the staged files are written and which dataset is ingested.
     raw = config["layers"]["bronze"]
     bucket_name = config["storage"]["bucket_name"]
-    source_name = config['datasets']['yellow_trip']['source_name']
+    source_name = raw_config['datasets']['yellow_trip']['source_name']
     database_obj = Database()
 
     # Build the sequence of year-month partitions to process.
@@ -84,16 +88,14 @@ def ingest_data(
         file_month = year_month.split("-")[1]
         s3_key = rf"s3a://{bucket_name}/{raw}/{source_name}/year={file_year}/month={file_month}/"
         
-        rs = database_obj.execute(f"""
-                SELECT COUNT(1) FROM metadata.ingestion_log WHERE file_name = '{file_name}' AND status = 'SUCCESS'
-        """)
+        rs = database_obj.execute(QueryStore.is_file_Uploaded_to_bronze(file_name=file_name))
         is_file_present = rs.fetchone()[0]
         
         # Skip files that already completed successfully in the metadata log.
         # This prevents duplicate work and keeps repeated runs idempotent.
         if not is_file_present:
             try:
-                upload_query = QueryStore().ingestion_log(file_name, url, s3_key, 'UPLOADING')
+                upload_query = QueryStore().ingestion_log(file_name, url, s3_key, 'UPLOADING', None)
                 database_obj.execute(query=upload_query, params={})
 
                 # Download the parquet file to a temporary location before loading it with Spark.
@@ -114,8 +116,6 @@ def ingest_data(
                     for column, dtype in schema.items():
                         if column in df.columns:
                             df = df.withColumn(column, col(column).cast(dtype))
-
-                    df.printSchema()
             
                     # Write the curated parquet data to the bronze storage path.
                     df.write \
@@ -124,14 +124,14 @@ def ingest_data(
 
                 # Record a successful bronze load in the metadata table.
                 # This gives downstream jobs a reliable audit trail for processed files.
-                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'SUCCESS')
+                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'SUCCESS', None)
                 database_obj.execute(query=success_query, params={})
                 logger.info(f"{favicon['right']} Successfully uploaded %s to S3", s3_key)
 
             except Exception as e:
                 logger.info(f"{favicon['error']} Error occured during uploading file to S3: ", e)
                 # Mark the file as failed so it can be retried later by the next run.
-                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'FAILED')
+                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'FAILED', str(e))
                 database_obj.execute(query=success_query, params={})
 
         else:
@@ -141,14 +141,13 @@ def ingest_data(
 if __name__ == "__main__":
     # Entry point for running the bronze ingestion job from the command line.
     logger.info(f"{favicon['info']} Start fetching data from NYC CDN")
-    source_name = config['datasets']['yellow_trip']['source_name']
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
 
-    start_year = config["datasets"]['yellow_trip']["start_year"]
-    start_month = config["datasets"]['yellow_trip']["start_month"]
-    end_year = config["datasets"]['yellow_trip']["end_year"]
-    end_month = config["datasets"]['yellow_trip']["end_month"]
+    start_year = raw_config["datasets"]['yellow_trip']["start_year"]
+    start_month = raw_config["datasets"]['yellow_trip']["start_month"]
+    end_year = raw_config["datasets"]['yellow_trip']["end_year"]
+    end_month = raw_config["datasets"]['yellow_trip']["end_month"]
 
     # Please add end dated as per requirements, if not passed latest date will be considered for end year and end month
     ingest_data(spark, start_year, start_month)

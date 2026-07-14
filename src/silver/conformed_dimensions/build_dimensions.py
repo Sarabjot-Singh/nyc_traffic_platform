@@ -48,7 +48,15 @@ if __name__ == '__main__':
 
         s3_key = rf"s3a://{bucket_name}/{silver}/{module}/"
 
-        query = QueryStore().silver_load_log(module, 'seed_file', s3_key, 'UPLOADING', load_method)
+        query = QueryStore().silver_load_log(
+            file_name=module
+            , source='seed_file'
+            , destination=s3_key
+            , method='initial'
+            , status='UPLOADING'
+            , error=None
+            , load_type=load_method
+        )
         db_obj.execute(query=query)
         
         imported_module = __import__(module_path, fromlist=[module])
@@ -65,7 +73,15 @@ if __name__ == '__main__':
         
         logger.info(f"{favicon['right']} Successfully created dimension - {name}")
         
-        query = QueryStore().silver_load_log(module, 'seed_file', s3_key, 'SUCCESS', load_method)
+        query = QueryStore().silver_load_log(
+            file_name=module
+            , source='seed_file'
+            , destination=s3_key
+            , method='initial'
+            , status='SUCCESS'
+            , error=None
+            , load_type=load_method
+        )
         db_obj.execute(query=query)
 
 

@@ -15,6 +15,7 @@ from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
 from src.silver.base import Model
+from src.silver.yellow_trips.schema import schema
 from repository.metadata_query import QueryStore
 
 load_dotenv()
@@ -30,13 +31,15 @@ with open('./src/silver/facts.yml', 'r') as fact_config_file:
 #  Defining config Variables
 ####################################
 # Load the silver fact configuration and target storage layer settings.
-fact_name = fact_config['facts']['fact_yellow_trips']['name']
+fact_name = fact_config['facts']['fact_yellow_trip']['name']
+partition_column = fact_config['facts']['fact_yellow_trip']['partition_column'][0]
 silver = config['layers']['silver']
 bucket_name = config['storage']['bucket_name']
 
+print(partition_column)
 
 # Silver fact model for the yellow taxi dataset.
-class FactYellowTrips(Model):
+class FactYellowTrip(Model):
     """Build and maintain the yellow taxi silver fact table."""
 
     def __init__(self):
@@ -60,10 +63,10 @@ class FactYellowTrips(Model):
         """
         # Load the dimensional lookup tables needed for surrogate-key enrichment.
         logger.info(f"{favicon['info']} Loading all the dimensions for Surrogate Keys")
-        dim_vendor = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_vendors").select('vendor_id', 'vendor_sk')
-        dim_rate_code = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_rate_code").select('rate_code_id', 'rate_code_sk')
-        dim_payment_method = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_payment_method").select('payment_method_id', 'payment_method_sk')
-        dim_location = spark.read.parquet("s3a://nyc-traffic-spark-2026/silver/dim_location").select('location_id', 'location_sk')
+        dim_vendor = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_vendors").select('vendor_id', 'vendor_sk')
+        dim_rate_code = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_rate_code").select('rate_code_id', 'rate_code_sk')
+        dim_payment_method = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_payment_method").select('payment_method_id', 'payment_method_sk')
+        dim_location = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_location").select('location_id', 'location_sk')
         
         fact_yellowtrip_df = df
         # prefiltering data to eliminate any future rows or rows from ery past
@@ -90,6 +93,7 @@ class FactYellowTrips(Model):
                 .withColumn('year', expr('YEAR(pickup_datetime)')) \
                 .withColumn('month', expr('MONTH(pickup_datetime)')) \
                 .withColumn('day', expr('DAY(pickup_datetime)')) \
+                .withColumn(partition_column, expr('TO_DATE(pickup_datetime)')) \
                 .select(
                     'trip_id',
                     'vendor_sk', 
@@ -113,7 +117,8 @@ class FactYellowTrips(Model):
                     'airport_fee',
                     'year',
                     'month',
-                    'day'
+                    'day',
+                    'partition_day'
                 )
         
         return fact_yellowtrip_df
@@ -133,29 +138,54 @@ class FactYellowTrips(Model):
         result = rs.fetchall()
 
         files = [file[0] for file in result]
+        files = sorted(files)
         
         for file in files:
             logger.info(f"{favicon['info']} Building fact from file {file}")
             fact_yellowtrip_df = spark.read.parquet(file)
             fact_yellowtrip_df = self.__curate_dataset(spark, fact_yellowtrip_df)
-            try:
-                query = QueryStore().silver_load_log(self.name, file, self.destination, 'UPLOADING', 'append')
-                database_obj.execute(query=query)
-                
-                fact_yellowtrip_df \
-                        .write \
-                        .format('delta') \
-                        .mode('overwrite') \
-                        .partitionBy('year', 'month') \
-                        .save(self.destination)
             
-                query = QueryStore().silver_load_log(self.name, file, self.destination, 'SUCCESS', 'append')
+            try:
+                query = QueryStore().silver_load_log(
+                    file_name=self.name, 
+                    source=file, 
+                    destination=self.destination, 
+                    status='UPLOADING', 
+                    method='append', 
+                    load_type='initial',
+                    error=None
+                )
+                database_obj.execute(query=query)
+
+                fact_yellowtrip_df.write \
+                    .format("delta") \
+                    .mode("append") \
+                    .partitionBy("partition_day") \
+                    .save(self.destination)
+            
+                query = QueryStore().silver_load_log(
+                    file_name=self.name, 
+                    source=file, 
+                    destination=self.destination, 
+                    status='SUCCESS', 
+                    method='append', 
+                    load_type='initial',
+                    error=None
+                )
                 database_obj.execute(query=query)
                 logger.info(f"{favicon['right']} Building fact from file {file}")
 
-            except:
+            except Exception as e:
                 logger.info(f"{favicon['error']} Failed building fact from file {file}")
-                query = QueryStore().silver_load_log(self.name, file, self.destination, 'FAILED', 'append')
+                query = QueryStore().silver_load_log(
+                    file_name=self.name, 
+                    source=file, 
+                    destination=self.destination, 
+                    status='FAILED', 
+                    method='append', 
+                    load_type='initial',
+                    error=None
+                )
                 database_obj.execute(query=query)
 
 
@@ -165,13 +195,14 @@ class FactYellowTrips(Model):
         Args:
             spark: Active Spark session used for reading new records and merging them.
         """
+        
         # Apply the latest bronze files to the Delta fact table incrementally.
         database_obj = Database()
 
         #################################################################
         # Get paths of two last inserted file from Raw Layer
         #################################################################
-        get_latest_files_query = QueryStore().get_n_latest_files(1)
+        get_latest_files_query = QueryStore().get_n_latest_files(2)
         rs = database_obj.execute(get_latest_files_query)
         sources = rs.fetchall()
         file_path = [source[0] for source in sources]
@@ -194,8 +225,7 @@ class FactYellowTrips(Model):
             source=fact_yellowtrip_df_new_records.alias("SOURCE"),
             condition="""
                 TARGET.trip_id = SOURCE.trip_id 
-                AND TARGET.year = SOURCE.year 
-                AND TARGET.month = SOURCE.month
+                AND TARGET.partition_day = SOURCE.partition_day 
             """ 
         ) \
         .withSchemaEvolution() \
@@ -210,8 +240,8 @@ if __name__ == '__main__':
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
     logger.info(f"{favicon['info']} Building {fact_name}...")
-    yt = FactYellowTrips()
+    yt = FactYellowTrip()
 
-    yt.incremental_load(spark)
+    yt.initial_load(spark)
 
     logger.info(f"{favicon['right']} Successfully Built the {fact_name}")
