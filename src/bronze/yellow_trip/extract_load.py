@@ -16,7 +16,7 @@ from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
 from repository.metadata_query import QueryStore
-from src.bronze.yellow_trips.schema import schema
+from src.bronze.yellow_trip.schema import schema
 
 CONFIG_PATH = 'config.yaml'
 with open(CONFIG_PATH, "r", encoding="utf-8") as file:
@@ -58,6 +58,7 @@ def ingest_data(
     raw = config["layers"]["bronze"]
     bucket_name = config["storage"]["bucket_name"]
     source_name = raw_config['datasets']['yellow_trip']['source_name']
+    name = raw_config['datasets']['yellow_trip']['name']
     database_obj = Database()
 
     # Build the sequence of year-month partitions to process.
@@ -86,7 +87,7 @@ def ingest_data(
         url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/{file_name}"
         file_year = year_month.split("-")[0]
         file_month = year_month.split("-")[1]
-        s3_key = rf"s3a://{bucket_name}/{raw}/{source_name}/year={file_year}/month={file_month}/"
+        s3_key = rf"s3a://{bucket_name}/{raw}/{name}/year={file_year}/month={file_month}/"
         
         rs = database_obj.execute(QueryStore.is_file_Uploaded_to_bronze(file_name=file_name))
         is_file_present = rs.fetchone()[0]

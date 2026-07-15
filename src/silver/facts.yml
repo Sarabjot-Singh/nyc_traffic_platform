@@ -1,10 +1,11 @@
 facts:
   fact_yellow_trip:
-    name: fact_yellow_trip
+    source_bronze_name: yellow_trip # This has to match with corresponding name is raw_config.yml
     module: fact_yellow_trip
-    module_path: src.silver.yellow_trips.fact_yellow_trip
+    module_path: src.silver.yellow_trip.fact_yellow_trip
     class: FactYellowTrip
     load_method: merge
+    load_type: incremental
     table_type: DeltaLake
     enabled: True
     partition_by: pickup_datetime # This is just a metadata column to know on which column partition column is based on

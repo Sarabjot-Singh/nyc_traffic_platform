@@ -15,7 +15,8 @@ from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
 from src.silver.base import Model
-from src.silver.yellow_trips.schema import schema
+from src.silver.validation import Test
+from src.silver.yellow_trip.schema import schema
 from repository.metadata_query import QueryStore
 
 load_dotenv()
@@ -31,7 +32,9 @@ with open('./src/silver/facts.yml', 'r') as fact_config_file:
 #  Defining config Variables
 ####################################
 # Load the silver fact configuration and target storage layer settings.
-fact_name = fact_config['facts']['fact_yellow_trip']['name']
+fact_name = fact_config['facts']['fact_yellow_trip']['module']
+method = fact_config['facts']['fact_yellow_trip']['load_method']
+load_type = fact_config['facts']['fact_yellow_trip']['load_type']
 partition_column = fact_config['facts']['fact_yellow_trip']['partition_column'][0]
 silver = config['layers']['silver']
 bucket_name = config['storage']['bucket_name']
@@ -199,41 +202,79 @@ class FactYellowTrip(Model):
         # Apply the latest bronze files to the Delta fact table incrementally.
         database_obj = Database()
 
-        #################################################################
-        # Get paths of two last inserted file from Raw Layer
-        #################################################################
-        get_latest_files_query = QueryStore().get_n_latest_files(2)
-        rs = database_obj.execute(get_latest_files_query)
-        sources = rs.fetchall()
-        file_path = [source[0] for source in sources]
-        
-        ##############################################################################################################
-        # Reading Last Two months of data from raw layer
-        # This is done to prevent file not found exception in case latest partition is not present in datalake
-        ##############################################################################################################     
-        fact_yellowtrip_df_new_records = spark.read.parquet(*file_path)
-        fact_yellowtrip_df_new_records = fact_yellowtrip_df_new_records.filter(
-                (to_date(col('tpep_pickup_datetime')) >= to_date(lit('2015-01-01'), 'yyyy-MM-dd')) & \
-                (to_date(col('tpep_pickup_datetime')) <= current_date())
+        try:
+            #################################################################
+            # Get paths of two last inserted file from Raw Layer
+            #################################################################
+            get_latest_files_query = QueryStore().get_n_latest_files(2)
+            rs = database_obj.execute(get_latest_files_query)
+            sources = rs.fetchall()
+            file_path = [source[0] for source in sources]
+            print(file_path)
+            
+            # ##############################################################################################################
+            # # Reading Last Two months of data from raw layer
+            # # This is done to prevent file not found exception in case latest partition is not present in datalake
+            # ##############################################################################################################     
+
+            fact_yellowtrip_df_new_records = spark.read.parquet(*file_path)
+            fact_yellowtrip_df_new_records = fact_yellowtrip_df_new_records.filter(
+                    (to_date(col('tpep_pickup_datetime')) >= to_date(lit('2015-01-01'), 'yyyy-MM-dd')) & \
+                    (to_date(col('tpep_pickup_datetime')) <= current_date())
+                )
+            fact_yellowtrip_df_new_records = self.__curate_dataset(spark, fact_yellowtrip_df_new_records)
+
+            logger.info(f"{favicon['info']} Building fact from file {file}")
+            query = QueryStore().silver_load_log(
+                file_name=self.name,
+                source=file,
+                destination=self.destination,
+                status='UPLOADING',
+                method=method,
+                load_type='incremental',
+                error=None
             )
-        fact_yellowtrip_df_new_records = self.__curate_dataset(spark, fact_yellowtrip_df_new_records)
+            database_obj.execute(query=query)
 
-        fact_yellowtrip_delta_table = DeltaTable.forPath(spark, self.destination)
+            fact_yellowtrip_delta_table = DeltaTable.forPath(spark, self.destination)
 
-        logger.info(f"{favicon['info']}")
-        fact_yellowtrip_delta_table.alias("TARGET").merge(
-            source=fact_yellowtrip_df_new_records.alias("SOURCE"),
-            condition="""
-                TARGET.trip_id = SOURCE.trip_id 
-                AND TARGET.partition_day = SOURCE.partition_day 
-            """ 
-        ) \
-        .withSchemaEvolution() \
-        .whenMatchedUpdateAll() \
-        .whenNotMatchedInsertAll() \
-        .execute()
+            logger.info(f"{favicon['info']}")
+            fact_yellowtrip_delta_table.alias("TARGET").merge(
+                source=fact_yellowtrip_df_new_records.alias("SOURCE"),
+                condition="""
+                    TARGET.trip_id = SOURCE.trip_id
+                    AND TARGET.partition_day = SOURCE.partition_day
+                """
+            ) \
+            .withSchemaEvolution() \
+            .whenMatchedUpdateAll() \
+            .whenNotMatchedInsertAll() \
+            .execute()
 
-        return
+            query = QueryStore().silver_load_log(
+                file_name=self.name,
+                source=file,
+                destination=self.destination,
+                status='SUCCESS',
+                method=method,
+                load_type='incremental',
+                error=None
+            )
+            database_obj.execute(query=query)
+            logger.info(f"{favicon['right']} Sucessfully merged the new records to fact table - {fact_name}")
+
+        except Exception as e:
+            logger.info(f"{favicon['error']} Failed building fact from file {file}")
+            query = QueryStore().silver_load_log(
+                file_name=self.name,
+                source=file,
+                destination=self.destination,
+                status='FAILED',
+                method=method,
+                load_type='incremental',
+                error=str(e)
+            )
+            database_obj.execute(query=query)
 
 
 if __name__ == '__main__':
@@ -242,6 +283,19 @@ if __name__ == '__main__':
     logger.info(f"{favicon['info']} Building {fact_name}...")
     yt = FactYellowTrip()
 
-    yt.initial_load(spark)
+    if load_type == 'initial':
+        yt.initial_load(spark)
+    elif load_type == 'incremental':
+        yt.incremental_load(spark)
+    else:
+        logger.error(f"""{favicon['error']} Please select correct load type in facts.yml. Allowed Values are:
+                     1) initial: Initially Populate the Delta table, use for full refresh, This may result in updated history.
+                     2) incremental: Incrementally Load the Data using Merge Query where records from last two months are merged with latest data.
+                     """)
 
+    #########################################################
+    # start Testing
+    #########################################################
+    testing_obj = Test(fact_name=fact_name)
+    test_result = testing_obj.perform_tests(spark=spark)
     logger.info(f"{favicon['right']} Successfully Built the {fact_name}")
