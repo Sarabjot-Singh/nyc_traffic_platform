@@ -1,0 +1,13 @@
+facts:
+  tbl_yellow_trips_dashboard:
+    source_bronze_name: yellow_trip # This has to match with corresponding name is raw_config.yml
+    module: tbl_yellow_trips_dashboard
+    module_path: src.gold.tbl_yellow_trips_dashboard.tbl_yellow_trips_dashboard
+    class: TblYellowTripsDashboard
+    load_method: merge
+    load_type: initial
+    table_type: delta
+    enabled: True
+    partition_by: pickup_datetime # This is just a metadata column to know on which column partition column is based on
+    partition_column:
+      - partition_day

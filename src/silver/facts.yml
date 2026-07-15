@@ -4,10 +4,9 @@ facts:
     module: fact_yellow_trip
     module_path: src.silver.yellow_trip.fact_yellow_trip
     class: FactYellowTrip
-    load_method: merge
+    mode: append # Please use append for full load
     load_type: incremental
-    table_type: DeltaLake
+    table_format: delta
     enabled: True
     partition_by: pickup_datetime # This is just a metadata column to know on which column partition column is based on
-    partition_column:
-      - partition_day
+    partition_column: partition_day

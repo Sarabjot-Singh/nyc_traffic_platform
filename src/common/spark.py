@@ -1,6 +1,5 @@
 import os
 from pyspark.sql import SparkSession
-from delta import configure_spark_with_delta_pip
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -39,6 +38,7 @@ class SparkManager:
             .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
             .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .config("spark.driver.memory", "6g") \
         ).getOrCreate()
 
     def get_spark_session(self):

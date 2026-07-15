@@ -12,7 +12,6 @@ from src.common.logger import get_logger
 from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
-from src.silver.yellow_trip.schema import schema
 from repository.metadata_query import QueryStore
 
 load_dotenv()
@@ -47,6 +46,9 @@ class Test:
 
         fact_yellowtrip_df_silver = spark.read.format('delta').load(silver_fact_path)
         silver_count = fact_yellowtrip_df_silver.count()
+
+        print(raw_count)
+        print(silver_count)
 
         return raw_count >= silver_count
     

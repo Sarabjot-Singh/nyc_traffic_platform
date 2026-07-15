@@ -77,30 +77,35 @@ class QueryStore:
         return query
     
     @staticmethod
-    def get_n_latest_files(n):
+    def get_n_latest_files(n, file_name):
         query = f'''
             WITH top_n_files AS (
                 SELECT 
                     *
                     , ROW_NUMBER() OVER(ORDER BY processed_at DESC) AS rn 
                 FROM metadata.raw_ingestion_log
-                WHERE status = 'SUCCESS'
+                WHERE status = 'SUCCESS' AND file_name like '%{file_name}%'
             )
             SELECT 
                 DISTINCT destination 
             FROM top_n_files
-            WHERE rn <= {n};
+            WHERE 
+                rn <= {n}
+            ;
         '''
 
         return query
     
     @staticmethod
-    def get_successful_bronze_files():
-        query = '''
+    def get_successful_bronze_files(file_name):
+        query = f'''
             SELECT
                 DISTINCT destination
             FROM metadata.raw_ingestion_log
-            WHERE status = 'SUCCESS';
+            WHERE 
+                status = 'SUCCESS'
+                AND file_name like '%{file_name}%'
+                ;
         '''
         return query
     
