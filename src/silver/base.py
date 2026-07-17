@@ -10,3 +10,6 @@ class Model(ABC):
     @abstractmethod
     def transform(self):
         pass
+
+    def initiate_transform(self):
+        pass
