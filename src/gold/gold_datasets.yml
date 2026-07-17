@@ -2,10 +2,21 @@ datasets:
   tbl_yellow_trips_dashboard:
     enabled: true
 
+    depends_on:
+      silver:
+        dimensions:
+          - dim_vendor
+          - dim_rate_code
+          - dim_payment_method
+          - dim_location
+        facts:
+          - fact_yellow_trip
+
     module: src.gold.tbl_yellow_trips_dashboard.tbl_yellow_trips_dashboard
     class_name: TblYellowTripsDashboard
 
     format: delta
+    mode: overwrite
 
     partition_columns:
       - activity_date

@@ -142,7 +142,7 @@ class FactYellowTrip(Model):
         required_dimensions = {}
         required_partitions = []
 
-        for dataset in depends_on['silver']:
+        for dataset in depends_on['silver']['dimensions']:
             dataset_path = dataset_config['datasets'][dataset]['path']
             dataset_format = dataset_config['datasets'][dataset]['format']
             required_dimensions[dataset] = spark.read.format(dataset_format).load(dataset_path)

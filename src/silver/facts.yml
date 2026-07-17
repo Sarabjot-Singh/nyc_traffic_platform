@@ -6,10 +6,11 @@ facts:
       bronze:
         - yellow_trip
       silver:
-        - dim_vendor
-        - dim_rate_code
-        - dim_payment_method
-        - dim_location
+        dimensions:
+          - dim_vendor
+          - dim_rate_code
+          - dim_payment_method
+          - dim_location
 
     module: src.silver.yellow_trip.fact_yellow_trip
     class_name: FactYellowTrip
