@@ -22,9 +22,9 @@ CONFIG_PATH = 'config.yaml'
 with open(CONFIG_PATH, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
-RAW_CONFIG_PATH = './src/bronze/raw_config.yml'
-with open(RAW_CONFIG_PATH, "r", encoding="utf-8") as file:
-    raw_config = yaml.safe_load(file)
+bronze_CONFIG_PATH = './src/bronze/bronze_config.yml'
+with open(bronze_CONFIG_PATH, "r", encoding="utf-8") as file:
+    bronze_config = yaml.safe_load(file)
 
 logger = get_logger()
 
@@ -55,10 +55,10 @@ def ingest_data(
 
     # Read the bronze storage location and dataset identity from configuration.
     # These values determine where the staged files are written and which dataset is ingested.
-    raw = config["layers"]["bronze"]
+    bronze = config["layers"]["bronze"]
     bucket_name = config["storage"]["bucket_name"]
-    source_name = raw_config['datasets']['yellow_trip']['source_name']
-    name = raw_config['datasets']['yellow_trip']['name']
+    source_name = bronze_config['datasets']['yellow_trip']['source_name']
+    name = bronze_config['datasets']['yellow_trip']['name']
     database_obj = Database()
 
     # Build the sequence of year-month partitions to process.
@@ -87,7 +87,7 @@ def ingest_data(
         url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/{file_name}"
         file_year = year_month.split("-")[0]
         file_month = year_month.split("-")[1]
-        s3_key = rf"s3a://{bucket_name}/{raw}/{name}/year={file_year}/month={file_month}/"
+        s3_key = rf"s3a://{bucket_name}/{bronze}/{name}/year={file_year}/month={file_month}/"
         
         rs = database_obj.execute(QueryStore.is_file_Uploaded_to_bronze(file_name=file_name))
         is_file_present = rs.fetchone()[0]
@@ -104,7 +104,7 @@ def ingest_data(
 
                     with requests.get(url, stream=True) as response:
                         response.raise_for_status()
-                        shutil.copyfileobj(response.raw, tmp)
+                        shutil.copyfileobj(response.bronze, tmp)
 
                     # Make sure all bytes are written
                     tmp.flush()
@@ -145,10 +145,10 @@ if __name__ == "__main__":
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
 
-    start_year = raw_config["datasets"]['yellow_trip']["start_year"]
-    start_month = raw_config["datasets"]['yellow_trip']["start_month"]
-    end_year = raw_config["datasets"]['yellow_trip']["end_year"]
-    end_month = raw_config["datasets"]['yellow_trip']["end_month"]
+    start_year = bronze_config["datasets"]['yellow_trip']["start_year"]
+    start_month = bronze_config["datasets"]['yellow_trip']["start_month"]
+    end_year = bronze_config["datasets"]['yellow_trip']["end_year"]
+    end_month = bronze_config["datasets"]['yellow_trip']["end_month"]
 
     # Please add end dated as per requirements, if not passed latest date will be considered for end year and end month
     ingest_data(spark, start_year, start_month)

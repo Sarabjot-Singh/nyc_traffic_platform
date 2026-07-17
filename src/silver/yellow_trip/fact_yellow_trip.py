@@ -16,7 +16,7 @@ from src.common.logger import get_logger
 from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
-from src.common.loader.loader import Loader
+from src.common.loader import Loader
 from src.common.aws import S3Util
 from src.silver.base import Model
 from src.silver.validation import Test
@@ -178,7 +178,7 @@ class FactYellowTrip(Model):
         elif self.refresh_type == 'incremental':
             file_path = dataset_config['datasets'][depends_on['bronze'][0]]['path']
             ##############################################################################################################
-            # Reading Last Two months of data from raw layer
+            # Reading Last Two months of data from bronze layer
             # This is done to prevent file not found exception in case latest partition is not present in datalake
             ##############################################################################################################     
             fact_yellowtrip_df_new_records = spark.read.parquet(file_path) \

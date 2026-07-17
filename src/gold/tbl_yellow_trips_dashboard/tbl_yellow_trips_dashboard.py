@@ -14,7 +14,7 @@ if str(project_root) not in sys.path:
 from src.common.logger import get_logger
 from src.common.favicon import favicon
 from src.common.spark import SparkManager
-from src.common.loader.loader import Loader
+from src.common.loader import Loader
 from src.common.database import Database
 from src.gold.base import Model
 from repository.metadata_query import QueryStore

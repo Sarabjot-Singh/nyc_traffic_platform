@@ -5,6 +5,6 @@ storage:
   bucket_name: nyc-traffic-spark-2026
 
 layers:
-  bronze: raw
+  bronze: bronze
   silver: silver
   gold: gold

@@ -30,7 +30,7 @@ with open('./src/silver/facts.yml', 'r') as fact_config_file:
 #  Defining config Variables
 ####################################
 # Load the silver fact configuration and target storage layer settings.
-raw = config['layers']['bronze']
+bronze = config['layers']['bronze']
 silver = config['layers']['silver']
 bucket_name = config['storage']['bucket_name']
 
@@ -39,19 +39,19 @@ class Test:
     def __validate_row_count(self, spark, fact_name):
         depends_on = fact_config['facts'][fact_name]['depends_on']
         source_bronze_name = depends_on['bronze'][0]
-        raw_data_path = dataset_config['datasets'][source_bronze_name]['path']
+        bronze_data_path = dataset_config['datasets'][source_bronze_name]['path']
         silver_fact_path = f"s3a://{bucket_name}/{silver}/{fact_name}/"
 
-        fact_yellowtrip_df_raw = spark.read.parquet(raw_data_path)
+        fact_yellowtrip_df_bronze = spark.read.parquet(bronze_data_path)
         
-        raw_count = fact_yellowtrip_df_raw.count()
+        bronze_count = fact_yellowtrip_df_bronze.count()
         fact_yellowtrip_df_silver = spark.read.format('delta').load(silver_fact_path)
         silver_count = fact_yellowtrip_df_silver.count()
 
-        print(raw_count)
+        print(bronze_count)
         print(silver_count)
 
-        return raw_count >= silver_count
+        return bronze_count >= silver_count
     
 
     def perform_tests(self, spark, fact_name):

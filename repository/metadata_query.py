@@ -1,10 +1,11 @@
-'''CREATE TABLE metadata.raw_ingestion_log
+'''CREATE TABLE metadata.bronze_ingestion_status_log
 (
     id           SERIAL PRIMARY KEY,
     file_name    VARCHAR(255) NOT NULL,
     source       TEXT NOT NULL,
     destination  TEXT NOT NULL,
     status       VARCHAR(20) NOT NULL,
+    load_type    VARCHAR(20) NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     error TEXT
 );'''
@@ -27,14 +28,15 @@ CREATE TABLE metadata.silver_ingestion_log
 class QueryStore:
 
     @staticmethod
-    def ingestion_log(file_name, source, destination, status, error):
+    def run_log_status(file_name, source, destination, status, load_type, error, table_name):
         query = f'''
-            INSERT INTO metadata.raw_ingestion_log
+            INSERT INTO metadata.{table_name}
             (
                 file_name,
                 source,
                 destination,
                 status,
+                load_type
                 error
             )
             VALUES
@@ -42,32 +44,6 @@ class QueryStore:
                 '{file_name}',
                 '{source}',
                 '{destination}',
-                '{status}',
-                '{error}'
-            );
-        '''
-
-        return query
-
-    @staticmethod
-    def silver_load_log(file_name, source, destination, status, error, load_type, method='overwrite'):
-        query = f'''
-            INSERT INTO metadata.silver_ingestion_log
-            (
-                file_name,
-                source,
-                destination,
-                method,
-                status,
-                load_type,
-                error
-            )
-            VALUES
-            (
-                '{file_name}',
-                '{source}',
-                '{destination}',
-                '{method}',
                 '{status}',
                 '{load_type}',
                 '{error}'
@@ -76,6 +52,7 @@ class QueryStore:
 
         return query
     
+    
     @staticmethod
     def get_n_latest_files(n, file_name):
         query = f'''
@@ -83,7 +60,7 @@ class QueryStore:
                 SELECT 
                     *
                     , ROW_NUMBER() OVER(ORDER BY processed_at DESC) AS rn 
-                FROM metadata.raw_ingestion_log
+                FROM metadata.bronze_ingestion_log
                 WHERE status = 'SUCCESS' AND file_name like '%{file_name}%'
             )
             SELECT 
@@ -101,7 +78,7 @@ class QueryStore:
         query = f'''
             SELECT
                 DISTINCT destination
-            FROM metadata.raw_ingestion_log
+            FROM metadata.bronze_ingestion_log
             WHERE 
                 status = 'SUCCESS'
                 AND file_name like '%{file_name}%'
@@ -111,8 +88,9 @@ class QueryStore:
     
     @staticmethod
     def is_file_Uploaded_to_bronze(file_name):
-        query = f"""SELECT COUNT(1) FROM metadata.raw_ingestion_log WHERE file_name = '{file_name}' AND status = 'SUCCESS'"""
+        query = f"""SELECT COUNT(1) FROM metadata.bronze_ingestion_log WHERE file_name = '{file_name}' AND status = 'SUCCESS'"""
         return query
 
+    @staticmethod
     def pipeline_run_log():
         pass

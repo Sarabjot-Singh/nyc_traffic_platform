@@ -14,19 +14,17 @@ from src.common.spark import SparkManager
 from src.common.database import Database
 from repository.metadata_query import QueryStore
 
-from src.common.loader.base_loader import BaseLoader
-
 load_dotenv()
 
 logger = get_logger()
 database_obj = Database()
 
-class Loader(BaseLoader):
+class Loader():
 
 
     def load_dataframe(self, dataframe, file_name, source, destination, mode, load_type, partition_column, format, log_table_name):
         try:
-            # query = QueryStore().silver_load_log(
+            # query = QueryStore().ingestion_log(
             #     file_name=file_name, 
             #     source=source, 
             #     destination=destination, 

@@ -13,7 +13,7 @@ The pipeline is organized around three layers:
 The main flow is:
 
 1. Ingest data from the NYC Taxi public source.
-2. Store the raw parquet files in the configured storage bucket.
+2. Store the bronze parquet files in the configured storage bucket.
 3. Load and transform the data into curated silver datasets.
 4. Write the results to Delta tables for downstream use.
 

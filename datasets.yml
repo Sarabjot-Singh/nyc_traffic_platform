@@ -2,7 +2,7 @@ datasets:
 
   yellow_trip:
     layer: bronze
-    path: s3a://nyc-traffic-spark-2026/raw/yellow_trip/
+    path: s3a://nyc-traffic-spark-2026/bronze/yellow_trip/
     format: parquet
 
   fact_yellow_trip:
