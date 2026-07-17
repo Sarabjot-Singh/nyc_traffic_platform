@@ -20,7 +20,7 @@ with open('./seeds/seeds.yml', 'r') as file:
 
 
 
-class DimVendors(Model):
+class DimVendors():
 
     def __init__(self, spark_session):
         self.schema = StructType([

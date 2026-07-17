@@ -24,18 +24,18 @@ database_obj = Database()
 class Loader(BaseLoader):
 
 
-    def load_dataframe(self, dataframe, file_name, source, destination, method, load_type, partition_column, format):
+    def load_dataframe(self, dataframe, file_name, source, destination, mode, load_type, partition_column, format, log_table_name):
         try:
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='UPLOADING', 
-                method=method, 
-                load_type=load_type,
-                error=None
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='UPLOADING', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=None
+            # )
+            # database_obj.execute(query=query)
             
             #########################################
             # Writing starts here 
@@ -44,7 +44,7 @@ class Loader(BaseLoader):
             
             dataframe.write \
                 .format(format) \
-                .mode(method) \
+                .mode(mode) \
                 .partitionBy(partition_column) \
                 .save(destination)
             
@@ -53,43 +53,43 @@ class Loader(BaseLoader):
             # Writing ends here 
             #########################################
             
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='SUCCESS', 
-                method=method, 
-                load_type=load_type,
-                error=None
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='SUCCESS', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=None
+            # )
+            # database_obj.execute(query=query)
             
         except Exception as e:
             logger.info(f"{favicon['error']} Failed Loading the Batch Successfully")
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='FAILED', 
-                method=method, 
-                load_type=load_type,
-                error=str(e)
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='FAILED', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=str(e)
+            # )
+            # database_obj.execute(query=query)
 
     
-    def incremental_load(self, source_df, target_df, condition, file_name, source, destination, method, load_type):
+    def incremental_load(self, source_df, target_df, condition, file_name, source, destination, method, load_type, log_table_name):
         try:
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='UPLOADING', 
-                method=method, 
-                load_type=load_type,
-                error=None
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='UPLOADING', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=None
+            # )
+            # database_obj.execute(query=query)
             
             #########################################
             # Writing starts here 
@@ -110,27 +110,27 @@ class Loader(BaseLoader):
             # Writing ends here 
             #########################################
             
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='SUCCESS', 
-                method=method, 
-                load_type=load_type,
-                error=None
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='SUCCESS', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=None
+            # )
+            # database_obj.execute(query=query)
             
         except Exception as e:
             logger.info(f"{favicon['error']} Failed Loading the Batch Successfully")
-            query = QueryStore().silver_load_log(
-                file_name=file_name, 
-                source=source, 
-                destination=destination, 
-                status='FAILED', 
-                method=method, 
-                load_type=load_type,
-                error=str(e)
-            )
-            database_obj.execute(query=query)
+            # query = QueryStore().silver_load_log(
+            #     file_name=file_name, 
+            #     source=source, 
+            #     destination=destination, 
+            #     status='FAILED', 
+            #     method=method, 
+            #     load_type=load_type,
+            #     error=str(e)
+            # )
+            # database_obj.execute(query=query)
         

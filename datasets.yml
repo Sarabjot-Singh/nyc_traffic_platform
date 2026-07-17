@@ -1,0 +1,36 @@
+datasets:
+
+  yellow_trip:
+    layer: bronze
+    path: s3a://nyc-traffic-spark-2026/raw/yellow_trip/
+    format: parquet
+
+  fact_yellow_trip:
+    layer: silver
+    path: s3a://nyc-traffic-spark-2026/silver/fact_yellow_trip/
+    format: delta
+
+  dim_vendor:
+    layer: silver
+    path: s3a://nyc-traffic-spark-2026/silver/dim_vendors/
+    format: delta
+  
+  dim_rate_code:
+    layer: silver
+    path: s3a://nyc-traffic-spark-2026/silver/dim_rate_code/
+    format: delta
+
+  dim_payment_method:
+    layer: silver
+    path: s3a://nyc-traffic-spark-2026/silver/dim_payment_method/
+    format: delta
+
+  dim_location:
+    layer: silver
+    path: s3a://nyc-traffic-spark-2026/silver/dim_location/
+    format: delta
+
+  tbl_yellow_trips_dashboard:
+    layer: gold
+    path: s3a://nyc-traffic-spark-2026/gold/tbl_yellow_trips_dashboard/
+    format: delta

@@ -1,3 +1,4 @@
+import os
 import sys
 import yaml
 from delta.tables import DeltaTable
@@ -23,18 +24,17 @@ logger = get_logger()
 with open('config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
-bucket_name = config['storage']['bucket_name']
-gold = config['layers']['gold']
-silver = config['layers']['silver']
+with open('./src/gold/gold_datasets.yml', 'r') as gold_config_file:
+    gold_config = yaml.safe_load(gold_config_file)
 
 class TblYellowTripsDashboard():
 
     def __init__(self):
         """Initialize the model with its target destination path and logical name."""
         self.name = __file__.split('/')[-1].split('.')[0]
-        # self.destination = rf"s3a://{bucket_name}/{gold}/{table_name}/"
+        self.destination = rf"s3a://{bucket_name}/{gold}/{dataset_name}/"
 
-    def transform(self, spark):
+    def transform(self, spark, df):
         # Load the dimensional lookup tables needed for surrogate-key enrichment.
         logger.info(f"{favicon['info']} Transforming dataset")
         dim_vendor = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_vendors")
@@ -42,9 +42,7 @@ class TblYellowTripsDashboard():
         dim_payment_method = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_payment_method")
         dim_location = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_location")
         
-        fact_yellowtrip_df = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/fact_yellow_trip/").filter(
-                col('partition_day') >= to_date(lit('2026-01-01'))
-            )
+        fact_yellowtrip_df = df
 
         ####################################################
         # Registering temporary views to use spark SQL
@@ -60,7 +58,7 @@ class TblYellowTripsDashboard():
         tbl_yellow_trips_dashboard = spark.sql(
             """
                 SELECT 
-                    partition_day AS pickup_date,
+                    partition_day AS activity_date,
                     dlpu.borough as pickup_borough,
                     dldo.borough as dropoff_borough,
                     dim_vendor.description AS vendor,
@@ -88,77 +86,52 @@ class TblYellowTripsDashboard():
             """
         )
         
-        tbl_yellow_trips_dashboard.show()
+        return tbl_yellow_trips_dashboard
                                             
     
-    # def initiate_transform(self, spark):
-    #     """Build the silver fact table from every successfully ingested bronze file.
+    def initiate_transform(self, spark):
+        # """Build the silver fact table from every successfully ingested bronze file.
 
-    #     Args:
-    #         spark: Active Spark session used to read bronze data and write the Delta table.
-    #     """
-    #     # Load all bronze files that were successfully ingested and build the silver fact table.
-    #     bronze_processed_file_query = QueryStore.get_successful_bronze_files()
+        # Args:
+        #     spark: Active Spark session used to read bronze data and write the Delta table.
+        # """
+        # Load all bronze files that were successfully ingested and build the silver fact table.
         
-    #     database_obj = Database()
-    #     rs = database_obj.execute(bronze_processed_file_query)
-    #     result = rs.fetchall()
 
-    #     files = [file[0] for file in result]
-    #     files = sorted(files)
-        
-    #     for file in files:
-    #         logger.info(f"{favicon['info']} Building fact from file {file}")
-    #         fact_yellowtrip_df = spark.read.parquet(file)
-    #         fact_yellowtrip_df = self.__curate_dataset(spark, fact_yellowtrip_df)
-            
-    #         try:
-    #             query = QueryStore().silver_load_log(
-    #                 file_name=self.name, 
-    #                 source=file, 
-    #                 destination=self.destination, 
-    #                 status='UPLOADING', 
-    #                 method='append', 
-    #                 load_type='initial',
-    #                 error=None
-    #             )
-    #             database_obj.execute(query=query)
+        fact_yellowtrip_df = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/fact_yellow_trip/").filter(
+                col('partition_day') >= to_date(lit('2021-01-01'))
+            )
 
-    #             fact_yellowtrip_df.write \
-    #                 .option("compression","snappy") \
-    #                 .format("delta") \
-    #                 .mode("append") \
-    #                 .partitionBy("partition_day") \
-    #                 .save(self.destination)
-            
-    #             query = QueryStore().silver_load_log(
-    #                 file_name=self.name, 
-    #                 source=file, 
-    #                 destination=self.destination, 
-    #                 status='SUCCESS', 
-    #                 method='append', 
-    #                 load_type='initial',
-    #                 error=None
-    #             )
-    #             database_obj.execute(query=query)
-    #             logger.info(f"{favicon['right']} Building fact from file {file}")
+        kwargs = {
+            'dataframe': fact_yellowtrip_df,
+            'file_name': dataset_name,
+            'source': '',
+            'destination': self.destination,
+            'method': load_mode,
+            'load_type': load_type
+        }
 
-    #         except Exception as e:
-    #             logger.info(f"{favicon['error']} Failed building fact from file {file}")
-    #             query = QueryStore().silver_load_log(
-    #                 file_name=self.name, 
-    #                 source=file, 
-    #                 destination=self.destination, 
-    #                 status='FAILED', 
-    #                 method='append', 
-    #                 load_type='initial',
-    #                 error=None
-    #             )
-    #             database_obj.execute(query=query)
+
 
 
 
 if __name__ == '__main__':
+    ####################################
+    #  Defining config Variables
+    ####################################
+    # Load the silver fact configuration and target storage layer settings.
+    file_name = os.path.abspath(__file__).split('/')[-1].split('.')[0]
+    gold = config['layers']['gold']
+    silver = config['layers']['gold']
+    bucket_name = config['storage']['bucket_name']
+
+    source_name = gold_config['datasets'][file_name]['source_bronze_name']
+    dataset_name = gold_config['datasets'][file_name]['module']
+    load_mode = gold_config['datasets'][file_name]['mode']
+    load_type = gold_config['datasets'][file_name]['load_type']
+    table_format = gold_config['datasets'][file_name]['table_format']
+    partition_column = gold_config['datasets'][file_name]['partition_column']
+
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
     # logger.info(f"{favicon['info']} Building {fact_name}...")

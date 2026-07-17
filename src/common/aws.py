@@ -50,3 +50,20 @@ class S3Util:
         except Exception as e:
             logger.error(f"{favicon['error']} Failed to upload file-like object to S3 bucket %s with key %s. Error: %s", bucket_name, object_key, str(e))
             raise
+
+    def get_partitions(self,bucket_name, prefix):
+        file_set = set()
+
+        objects = self.s3_client.list_objects(
+            Bucket=bucket_name,
+            Prefix=prefix,
+        )
+
+        for content in objects['Contents']:
+            path = content['Key']
+            folder = path.rsplit("/", 1)[0]
+            file_set.add(folder)
+
+        return file_set
+
+        

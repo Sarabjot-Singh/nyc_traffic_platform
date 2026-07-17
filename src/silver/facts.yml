@@ -1,12 +1,20 @@
 facts:
   fact_yellow_trip:
-    source_bronze_name: yellow_trip # This has to match with corresponding name is raw_config.yml
-    module: fact_yellow_trip
-    module_path: src.silver.yellow_trip.fact_yellow_trip
-    class: FactYellowTrip
-    mode: append # Please use append for full load
-    load_type: incremental
-    table_format: delta
-    enabled: True
-    partition_by: pickup_datetime # This is just a metadata column to know on which column partition column is based on
-    partition_column: partition_day
+    enabled: true
+
+    depends_on:
+      bronze:
+        - yellow_trip
+      silver:
+        - dim_vendor
+        - dim_rate_code
+        - dim_payment_method
+        - dim_location
+
+    module: src.silver.yellow_trip.fact_yellow_trip
+    class_name: FactYellowTrip
+
+    format: delta
+
+    partition_columns:
+      - partition_day

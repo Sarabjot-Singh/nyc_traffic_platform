@@ -120,7 +120,7 @@ def ingest_data(
             
                     # Write the curated parquet data to the bronze storage path.
                     df.write \
-                        .mode("append") \
+                        .mode("overwrite") \
                         .parquet(s3_key)
 
                 # Record a successful bronze load in the metadata table.

@@ -21,7 +21,7 @@ with open('./seeds/seeds.yml', 'r') as file:
 
 
 
-class DimDate(Model):
+class DimDate():
 
     def __init__(self, spark_session):
         self.schema = StructType([
@@ -52,7 +52,6 @@ class DimDate(Model):
                                 .option('mergeSchema', True) \
                                 .load(config['seeds']['dim_date']['path'])
             
-            date_df.show()
             logger.info(f"{favicon['right']} dim_date transformation completed successfully")
             return date_df
 

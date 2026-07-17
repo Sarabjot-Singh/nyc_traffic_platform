@@ -21,7 +21,7 @@ with open('./seeds/seeds.yml', 'r') as file:
 
 
 
-class DimLocation(Model):
+class DimLocation():
 
     def __init__(self, spark_session):
         self.schema = StructType([

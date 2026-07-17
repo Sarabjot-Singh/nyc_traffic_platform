@@ -2,6 +2,7 @@ import os
 import sys
 import yaml
 from delta.tables import DeltaTable
+from urllib.parse import urlparse
 from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from pyspark.sql.functions import *
@@ -16,6 +17,7 @@ from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
 from src.common.loader.loader import Loader
+from src.common.aws import S3Util
 from src.silver.base import Model
 from src.silver.validation import Test
 from repository.metadata_query import QueryStore
@@ -23,11 +25,16 @@ from repository.metadata_query import QueryStore
 load_dotenv()
 logger = get_logger()
 
+s3_util = S3Util()
+
 with open('config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
-with open('./src/silver/facts.yml', 'r') as fact_config_file:
-    fact_config = yaml.safe_load(fact_config_file)
+with open('datasets.yml', 'r') as file:
+    dataset_config = yaml.safe_load(file)
+
+with open('./src/silver/facts.yml', 'r') as file:
+    fact_config = yaml.safe_load(file)
 
 
 # Silver fact model for the yellow taxi dataset.
@@ -36,9 +43,11 @@ class FactYellowTrip(Model):
 
     def __init__(self):
         """Initialize the model with its target destination path and logical name."""
-        self.destination = rf"s3a://{bucket_name}/{silver}/{fact_name}/"
+        self.refresh_type = 'incremental'
+        self.destination = rf"s3a://{bucket_name}/{layer}/{fact_name}/"
 
-    def transform(self, spark, df):
+
+    def transform(self, required_dimensions, df):
         """Curate a bronze dataframe into the silver fact schema.
 
         The method filters out invalid future rows, generates a stable trip identifier,
@@ -55,10 +64,11 @@ class FactYellowTrip(Model):
 
         # Load the dimensional lookup tables needed for surrogate-key enrichment.
         logger.info(f"{favicon['info']} Loading all the dimensions for Surrogate Keys")
-        dim_vendor = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_vendors").select('vendor_id', 'vendor_sk')
-        dim_rate_code = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_rate_code").select('rate_code_id', 'rate_code_sk')
-        dim_payment_method = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_payment_method").select('payment_method_id', 'payment_method_sk')
-        dim_location = spark.read.format('delta').load("s3a://nyc-traffic-spark-2026/silver/dim_location").select('location_id', 'location_sk')
+
+        dim_vendor = required_dimensions['dim_vendor'].select('vendor_id', 'vendor_sk')
+        dim_rate_code = required_dimensions['dim_rate_code'].select('rate_code_id', 'rate_code_sk')
+        dim_payment_method = required_dimensions['dim_payment_method'].select('payment_method_id', 'payment_method_sk')
+        dim_location = required_dimensions['dim_location'].select('location_id', 'location_sk')
         
         fact_yellowtrip_df = df
         # prefiltering data to eliminate any future rows or rows from ery past
@@ -73,6 +83,8 @@ class FactYellowTrip(Model):
             'trip_id', sha2(concat_ws("||", *[col(c) for c in trip_id_hash_candidates]), 256)
         )
 
+        fact_yellowtrip_df = fact_yellowtrip_df.dropDuplicates()
+
         logger.info(f"{favicon['info']} Transforming fact table to include surrogate keys from dimensions")
         fact_yellowtrip_df = fact_yellowtrip_df \
                 .join(broadcast(dim_vendor), on=fact_yellowtrip_df['VendorID'] == dim_vendor['vendor_id'], how='left') \
@@ -85,7 +97,7 @@ class FactYellowTrip(Model):
                 .withColumn('year', expr('YEAR(pickup_datetime)')) \
                 .withColumn('month', expr('MONTH(pickup_datetime)')) \
                 .withColumn('day', expr('DAY(pickup_datetime)')) \
-                .withColumn(partition_column, expr('TO_DATE(pickup_datetime)')) \
+                .withColumn('partition_day', expr('TO_DATE(pickup_datetime)')) \
                 .select(
                     'trip_id',
                     'vendor_sk', 
@@ -124,67 +136,73 @@ class FactYellowTrip(Model):
             spark: Active Spark session used to read bronze data and write the Delta table.
         """
         database_obj = Database()
-        
+        ###################################################################################
+        # load required datasets
+        ###################################################################################
+        required_dimensions = {}
+        required_partitions = []
+
+        for dataset in depends_on['silver']:
+            dataset_path = dataset_config['datasets'][dataset]['path']
+            dataset_format = dataset_config['datasets'][dataset]['format']
+            required_dimensions[dataset] = spark.read.format(dataset_format).load(dataset_path)
+
+        for dataset in depends_on['bronze']:
+            path = dataset_config['datasets'][dataset]['path']
+            parsed = urlparse(path)
+            prefix = parsed.path.lstrip("/")
+            required_partitions = s3_util.get_partitions(bucket_name=bucket_name, prefix=prefix)
+
+        required_partitions = sorted(required_partitions)
         # Load all bronze files that were successfully ingested and build the silver fact table.
-        if load_type == 'initial':
-            bronze_processed_file_query = QueryStore.get_successful_bronze_files(source_name)
-            rs = database_obj.execute(bronze_processed_file_query)
-            result = rs.fetchall()
-
-            files = [file[0] for file in result]
-            
-            for file in files:
-                logger.info(f"{favicon['info']} Building fact from file {file}")
-                fact_yellowtrip_df = spark.read.parquet(file)
-                before_count = fact_yellowtrip_df.count()
-                fact_yellowtrip_df = self.transform(spark, fact_yellowtrip_df)
-                after_count = fact_yellowtrip_df.count()
-
-                if before_count < after_count:
-                    logger.error("f'{favicon['error']} XXXXXXXXXXXXXXXXXXXXXXXXXXXX Row count increased after transformation XXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-                    return
+        if self.refresh_type == 'full':
+            for partition in required_partitions:
+                logger.info(f"{favicon['info']} Building fact from file {partition}")
+                df = spark.read.parquet(f"s3a://{bucket_name}/{partition}")
+                fact_yellowtrip_df = self.transform(required_dimensions, df)                
 
                 kwargs = {
                     'dataframe': fact_yellowtrip_df,
                     'file_name': fact_name,
-                    'source': file,
+                    'source': partition,
                     'destination': self.destination,
-                    'method': load_mode,
-                    'load_type': load_type,
-                    'partition_column': partition_column,
-                    'format': table_format
+                    'mode': 'append',
+                    'load_type': self.refresh_type,
+                    'partition_column': ','.join([partition_col for partition_col in partition_columns]),
+                    'format': table_format,
+                    'log_table_name': 'metadata.silver_ingestion_log'
                 }
                 
                 yield kwargs
         
-        elif load_type == 'incremental':
-            #################################################################
-            # Get paths of two last inserted file from Raw Layer
-            #################################################################
-            get_latest_files_query = QueryStore().get_n_latest_files(1, source_name)
-            rs = database_obj.execute(get_latest_files_query)
-            sources = rs.fetchall()
-            file_path = [source[0] for source in sources]
-            
+        elif self.refresh_type == 'incremental':
+            file_path = dataset_config['datasets'][depends_on['bronze'][0]]['path']
             ##############################################################################################################
             # Reading Last Two months of data from raw layer
             # This is done to prevent file not found exception in case latest partition is not present in datalake
             ##############################################################################################################     
-            fact_yellowtrip_df_new_records = spark.read.parquet(*file_path)
-            fact_yellowtrip_df_new_records = self.transform(spark, fact_yellowtrip_df_new_records)
+            fact_yellowtrip_df_new_records = spark.read.parquet(file_path) \
+                    .filter(
+                        col('tpep_pickup_datetime') >= expr("date_trunc('month', add_months(current_date(), -2))")
+                    )
             
+            fact_yellowtrip_df_new_records = self.transform(required_dimensions, fact_yellowtrip_df_new_records)
             fact_yellowtrip_delta_table = DeltaTable.forPath(spark, self.destination)
             
             # please write TARGET and SOURCE in capitals
             kwargs = {
                 'source_df': fact_yellowtrip_df_new_records,
                 'target_df': fact_yellowtrip_delta_table,
-                'condition': f"""TARGET.trip_id = SOURCE.trip_id AND TARGET.partition_day == SOURCE.partition_day""",
+                'condition': f"""
+                    TARGET.trip_id = SOURCE.trip_id,
+                    AND TARGET.partition_day = SOURCE.partition_day 
+                    """,
                 'file_name': fact_name,
                 'source': ','.join(path for path in file_path),
                 'destination': self.destination,
-                'method': load_mode,
-                'load_type': load_type
+                'method': 'merge',
+                'load_type': self.refresh_type,
+                'log_table_name': 'metadata.silver_ingestion_log'
             }
 
             yield kwargs
@@ -199,16 +217,14 @@ if __name__ == '__main__':
     #  Defining config Variables
     ####################################
     # Load the silver fact configuration and target storage layer settings.
-    file_name = os.path.abspath(__file__).split('/')[-1].split('.')[0]
-    source_name = fact_config['facts'][file_name]['source_bronze_name']
-    fact_name = fact_config['facts'][file_name]['module']
-    load_mode = fact_config['facts'][file_name]['mode']
-    load_type = fact_config['facts'][file_name]['load_type']
-    table_format = fact_config['facts'][file_name]['table_format']
-    partition_column = fact_config['facts'][file_name]['partition_column']
-    silver = config['layers']['silver']
+    layer = config['layers']['silver']
     bucket_name = config['storage']['bucket_name']
     loader = Loader()
+    
+    fact_name = os.path.abspath(__file__).split('/')[-1].split('.')[0]
+    table_format = fact_config['facts'][fact_name]['format']
+    partition_columns = fact_config['facts'][fact_name]['partition_columns']
+    depends_on = fact_config['facts'][fact_name]['depends_on']
 
     # # Creating Spark Manager
     spark_obj = SparkManager()
@@ -217,18 +233,14 @@ if __name__ == '__main__':
     yt = FactYellowTrip()
 
     for kwargs in yt.initiate_transform(spark=spark):
-        if load_type == 'initial':
+        if yt.refresh_type == 'full':
             loader.load_dataframe(**kwargs)
         else:
             loader.incremental_load(**kwargs)
     
-    ########################################################
+    ######################################################
     # start Testing
-    ########################################################
-    testing_obj = Test(fact_name=fact_name)
-    test_result = testing_obj.perform_tests(spark=spark)
+    ######################################################
+    testing_obj = Test()
+    test_result = testing_obj.perform_tests(spark=spark, fact_name=fact_name)
     logger.info(f"{favicon['right']} Successfully Built the {fact_name}")
-
-
-#     820552522                                                                       
-# 820549812
