@@ -46,18 +46,18 @@ class FactYellowTrip(Model):
 
 
     def transform(self, required_dimensions, df):
-        """Curate a bronze dataframe into the silver fact schema.
+        """Enrich a bronze dataframe with surrogate keys and prepare it for the silver fact schema.
 
-        The method filters out invalid future rows, generates a stable trip identifier,
-        enriches the data with surrogate keys from dimension tables, and reshapes the
-        fields into the fact-table structure used by the silver layer.
+        The method filters out invalid historical and future rows, generates a stable trip identifier
+        using a hash of all columns, removes duplicates, and enriches the data with surrogate keys
+        from dimension tables before reshaping into the final fact-table structure.
 
         Args:
-            spark: Active Spark session.
+            required_dimensions: Dictionary containing dimension tables (vendor, rate_code, payment_method, location).
             df: Input dataframe from the bronze layer.
 
         Returns:
-            DataFrame: Curated dataframe ready for silver storage.
+            DataFrame: Curated dataframe with surrogate keys and silver fact schema ready for storage.
         """
 
         # Load the dimensional lookup tables needed for surrogate-key enrichment.
@@ -69,7 +69,7 @@ class FactYellowTrip(Model):
         dim_location = required_dimensions['dim_location'].select('location_id', 'location_sk')
         
         fact_yellowtrip_df = df
-        # prefiltering data to eliminate any future rows or rows from ery past
+        # Prefilter data to eliminate any rows with pickup dates outside the valid historical range.
         fact_yellowtrip_df = fact_yellowtrip_df.filter(
                 (to_date(col('tpep_pickup_datetime')) >= to_date(lit('2015-01-01'), 'yyyy-MM-dd')) & \
                 (to_date(col('tpep_pickup_datetime')) <= current_date())

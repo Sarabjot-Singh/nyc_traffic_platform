@@ -35,8 +35,18 @@ silver = config['layers']['silver']
 bucket_name = config['storage']['bucket_name']
 
 class Test:
+    """Validation tests for silver layer fact tables."""
 
     def __validate_row_count(self, spark, fact_name):
+        """Validate that the silver fact table has at least as many rows as the source bronze data.
+
+        Args:
+            spark: Active Spark session.
+            fact_name: The name of the fact table to validate.
+
+        Returns:
+            bool: True if silver row count >= bronze row count, False otherwise.
+        """
         depends_on = fact_config['facts'][fact_name]['depends_on']
         source_bronze_name = depends_on['bronze'][0]
         bronze_data_path = dataset_config['datasets'][source_bronze_name]['path']
@@ -55,6 +65,12 @@ class Test:
     
 
     def perform_tests(self, spark, fact_name):
+        """Execute all validation tests for a fact table and log results.
+
+        Args:
+            spark: Active Spark session.
+            fact_name: The name of the fact table to validate.
+        """
         logger.info(f"{favicon['info']} Performing Row Count Check")
         row_count_check = self.__validate_row_count(spark, fact_name)
         if row_count_check:

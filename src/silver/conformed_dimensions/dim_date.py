@@ -61,8 +61,10 @@ class DimDate():
         
         
     def incremental_load(self):
-        """
-        Incremental load for dim_date checks for dim_date in S3 and if not found, performs initial load. 
-        If found, it checks for new vendors in seed files and appends them to the existing dim_date table.
+        """Incrementally load the dim_date dimension table (not yet implemented).
+
+        Checks if dim_date already exists in S3. If not found, performs initial load.
+        If found, compares against new dates in seed files and appends any new dates
+        to the existing dim_date table.
         """
         pass

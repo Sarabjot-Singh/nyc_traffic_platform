@@ -58,16 +58,18 @@ class DimLocation():
         
         
     def incremental_load(self):
-        """
-        Incremental load for dim_location checks for dim_location in S3 and if not found, performs initial load. 
-        If found, it checks for new vendors in seed files and appends them to the existing dim_location table.
+        """Incrementally load the dim_location dimension table.
+
+        Checks if dim_location already exists in S3. If not found, performs initial load.
+        If found, compares against new locations in seed files and appends any new locations
+        to the existing dim_location table.
         """
         try:
             original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_location.parquet")
 
-            logger.info(f"{favicon['info']} dim_location table found in S3, checking for new vendors...")
+            logger.info(f"{favicon['info']} dim_location table found in S3, checking for new locations...")
 
-            incoming_vendors_df = self.spark.read.format('csv') \
+            incoming_locations_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -75,14 +77,14 @@ class DimLocation():
             
             max_sk = original_df.agg({"location_sk": "max"}).collect()[0][0]
             
-            new_vendors_df = incoming_vendors_df.join(original_df, on='rate_code_id', how='left_anti')
-            new_vendors_df = new_vendors_df.withColumn("location_sk", row_number().over(
+            new_locations_df = incoming_locations_df.join(original_df, on='location_id', how='left_anti')
+            new_locations_df = new_locations_df.withColumn("location_sk", row_number().over(
                 Window.orderBy("location_id")
-            ) + max_sk).select("location_sk", "location_id", "description")
+            ) + max_sk).select("location_sk", "location_id", "borough", "zone", "service_zone")
 
-            vendors_df = original_df.union(new_vendors_df)
+            locations_df = original_df.union(new_locations_df)
 
-            return vendors_df
+            return locations_df
 
         except Exception as e:
             logger.error(f"{favicon['error']} Error while reading dim_location from S3: %s", str(e))

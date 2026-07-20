@@ -56,16 +56,18 @@ class DimRateCode():
         
         
     def incremental_load(self):
-        """
-        Incremental load for dim_rate_code checks for dim_rate_code in S3 and if not found, performs initial load. 
-        If found, it checks for new vendors in seed files and appends them to the existing dim_rate_code table.
+        """Incrementally load the dim_rate_code dimension table.
+
+        Checks if dim_rate_code already exists in S3. If not found, performs initial load.
+        If found, compares against new rate codes in seed files and appends any new rate codes
+        to the existing dim_rate_code table.
         """
         try:
             original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
 
-            logger.info(f"{favicon['info']} dim_ratecode table found in S3, checking for new vendors...")
+            logger.info(f"{favicon['info']} dim_ratecode table found in S3, checking for new rate codes...")
 
-            incoming_vendors_df = self.spark.read.format('csv') \
+            incoming_rate_codes_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -73,14 +75,14 @@ class DimRateCode():
             
             max_sk = original_df.agg({"rate_code_sk": "max"}).collect()[0][0]
             
-            new_vendors_df = incoming_vendors_df.join(original_df, on='rate_code_id', how='left_anti')
-            new_vendors_df = new_vendors_df.withColumn("rate_code_sk", row_number().over(
+            new_rate_codes_df = incoming_rate_codes_df.join(original_df, on='rate_code_id', how='left_anti')
+            new_rate_codes_df = new_rate_codes_df.withColumn("rate_code_sk", row_number().over(
                 Window.orderBy("rate_code_id")
             ) + max_sk).select("rate_code_sk", "rate_code_id", "description")
 
-            vendors_df = original_df.union(new_vendors_df)
+            rate_codes_df = original_df.union(new_rate_codes_df)
 
-            return vendors_df
+            return rate_codes_df
 
         except Exception as e:
             logger.error(f"{favicon['error']} Error while reading dim_rate_code from S3: %s", str(e))

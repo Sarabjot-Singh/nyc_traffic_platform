@@ -51,7 +51,16 @@ class S3Util:
             logger.error(f"{favicon['error']} Failed to upload file-like object to S3 bucket %s with key %s. Error: %s", bucket_name, object_key, str(e))
             raise
 
-    def get_partitions(self,bucket_name, prefix):
+    def get_partitions(self, bucket_name, prefix):
+        """List all partition folders under a given S3 prefix.
+
+        Args:
+            bucket_name: The name of the S3 bucket.
+            prefix: The S3 prefix to search within.
+
+        Returns:
+            set: A set of unique partition folder paths.
+        """
         file_set = set()
 
         objects = self.s3_client.list_objects(

@@ -26,6 +26,14 @@ class QueryStore:
 
     @staticmethod
     def run_log_status(layer):
+        """Generate a SQL INSERT query to log ingestion status for a given layer.
+
+        Args:
+            layer: The data layer (bronze, silver, or gold) for which to log status.
+
+        Returns:
+            str: A parameterized SQL INSERT statement for the appropriate status log table.
+        """
         table_name = ''
         if layer.lower() == 'bronze':
             table_name = 'bronze_ingestion_status_log'
@@ -65,6 +73,15 @@ class QueryStore:
     
     @staticmethod
     def get_n_latest_files(n, file_name):
+        """Retrieve destinations of the n most recently ingested files matching a pattern.
+
+        Args:
+            n: The number of most recent files to retrieve.
+            file_name: A filename pattern to filter results (matches partial filenames).
+
+        Returns:
+            str: A SQL query that returns distinct destination paths for the top n files.
+        """
         query = f"""
             WITH top_n_files AS (
                 SELECT 
@@ -85,6 +102,14 @@ class QueryStore:
     
     @staticmethod
     def get_successful_bronze_files(file_name):
+        """Retrieve all destinations of successfully ingested bronze files matching a pattern.
+
+        Args:
+            file_name: A filename pattern to filter results (matches partial filenames).
+
+        Returns:
+            str: A SQL query that returns distinct destination paths for successful files.
+        """
         query = f"""
             SELECT
                 DISTINCT destination
@@ -98,9 +123,22 @@ class QueryStore:
     
     @staticmethod
     def is_file_Uploaded_to_bronze(file_name):
+        """Check if a file has been successfully uploaded to the bronze layer.
+
+        Args:
+            file_name: The name of the file to check.
+
+        Returns:
+            str: A SQL query that returns a count of 1 if the file was successfully ingested, 0 otherwise.
+        """
         query = f"""SELECT COUNT(1) FROM metadata.bronze_ingestion_status_log WHERE file_name = '{file_name}' AND status = 'SUCCESS'"""
         return query
 
     @staticmethod
     def pipeline_run_log():
+        """Generate a query to log pipeline execution details (not yet implemented).
+
+        Returns:
+            None: This method is not yet implemented.
+        """
         pass

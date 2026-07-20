@@ -31,24 +31,22 @@ class DimPaymentMethod():
         self.spark = spark_session
     
     def initial_load(self):
-        """
-            Create the dim_payment_method dimension table from seed data.
-        """
+        """Create the dim_payment_method dimension table from seed data."""
         try:
             logger.info(f"{favicon['info']} Starting dim_payment_method transformation")
 
-            rate_code_df = self.spark.read.format('csv') \
+            payment_method_df = self.spark.read.format('csv') \
                                 .schema(self.schema) \
                                 .option('header', True) \
                                 .option('mergeSchema', True) \
                                 .load(config['seeds']['dim_payment_method']['path'])
             
-            rate_code_df = rate_code_df.withColumn("payment_method_sk", row_number().over(
+            payment_method_df = payment_method_df.withColumn("payment_method_sk", row_number().over(
                 Window.orderBy("payment_method_id")
             )).select("payment_method_sk", "payment_method_id", "description")
             
             logger.info(f"{favicon['right']} dim_payment_method transformation completed successfully")
-            return rate_code_df
+            return payment_method_df
 
         except Exception as e:
             logger.error(f"{favicon['error']} Error during dim_payment_method transformation: %s", str(e))
@@ -56,16 +54,18 @@ class DimPaymentMethod():
         
         
     def incremental_load(self):
-        """
-        Incremental load for dim_payment_method checks for dim_payment_method in S3 and if not found, performs initial load. 
-        If found, it checks for new vendors in seed files and appends them to the existing dim_payment_method table.
+        """Incrementally load the dim_payment_method dimension table.
+
+        Checks if dim_payment_method already exists in S3. If not found, performs initial load.
+        If found, compares against new payment methods in seed files and appends any new payment methods
+        to the existing dim_payment_method table.
         """
         try:
-            original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_ratecode.parquet")
+            original_df = self.spark.read.parquet("s3a://nyc-traffic-spark-2026/dimensions/dim_payment_method.parquet")
 
-            logger.info(f"{favicon['info']} dim_ratecode table found in S3, checking for new vendors...")
+            logger.info(f"{favicon['info']} dim_payment_method table found in S3, checking for new payment methods...")
 
-            incoming_vendors_df = self.spark.read.format('csv') \
+            incoming_payment_methods_df = self.spark.read.format('csv') \
                                     .option('header', True) \
                                     .option('mergeSchema', True) \
                                     .schema(self.schema) \
@@ -73,14 +73,14 @@ class DimPaymentMethod():
             
             max_sk = original_df.agg({"payment_method_sk": "max"}).collect()[0][0]
             
-            new_vendors_df = incoming_vendors_df.join(original_df, on='rate_code_id', how='left_anti')
-            new_vendors_df = new_vendors_df.withColumn("payment_method_sk", row_number().over(
+            new_payment_methods_df = incoming_payment_methods_df.join(original_df, on='payment_method_id', how='left_anti')
+            new_payment_methods_df = new_payment_methods_df.withColumn("payment_method_sk", row_number().over(
                 Window.orderBy("payment_method_id")
             ) + max_sk).select("payment_method_sk", "payment_method_id", "description")
 
-            vendors_df = original_df.union(new_vendors_df)
+            payment_methods_df = original_df.union(new_payment_methods_df)
 
-            return vendors_df
+            return payment_methods_df
 
         except Exception as e:
             logger.error(f"{favicon['error']} Error while reading dim_payment_method from S3: %s", str(e))

@@ -93,14 +93,14 @@ class TblYellowTripsDashboard(Model):
                                             
     
     def initiate_transform(self, spark):
-        # """Build the silver fact table from every successfully ingested bronze file.
+        """Build the gold dashboard table by joining silver facts with dimensions.
 
-        # Args:
-        #     spark: Active Spark session used to read bronze data and write the Delta table.
-        # """
-        # Load all bronze files that were successfully ingested and build the silver fact table.
-        
+        Loads all required dimensions and facts from the silver layer and performs
+        aggregations and transformations to create the final dashboard table.
 
+        Args:
+            spark: Active Spark session used to read silver data and write the gold table.
+        """
         logger.info(f"{favicon['info']} Loading all the dimensions for Surrogate Keys")
         required_dimensions = {}
         required_facts = {}
