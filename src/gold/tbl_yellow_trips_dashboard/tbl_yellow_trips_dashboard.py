@@ -1,8 +1,6 @@
 import os
 import sys
 import yaml
-from delta.tables import DeltaTable
-from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from pyspark.sql.functions import *
 from dotenv import load_dotenv
@@ -15,9 +13,7 @@ from src.common.logger import get_logger
 from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.loader import Loader
-from src.common.database import Database
 from src.gold.base import Model
-from repository.metadata_query import QueryStore
 
 load_dotenv()
 logger = get_logger()
@@ -31,7 +27,7 @@ with open('datasets.yml', 'r') as file:
 with open('./src/gold/gold_datasets.yml', 'r') as gold_config_file:
     gold_config = yaml.safe_load(gold_config_file)
 
-class TblYellowTripsDashboard():
+class TblYellowTripsDashboard(Model):
 
     def __init__(self):
         """Initialize the model with its target destination path and logical name."""
@@ -48,15 +44,18 @@ class TblYellowTripsDashboard():
         
         fact_yellowtrip_df = required_facts['fact_yellow_trip']
 
-        ####################################################
-        # Registering temporary views to use spark SQL
-        ####################################################
+        #################################################################
+        # Registering dimensions as temporary views to use spark SQL
+        #################################################################
         
         dim_vendor.createOrReplaceTempView('dim_vendor')
         dim_rate_code.createOrReplaceTempView('dim_rate_code')
         dim_payment_method.createOrReplaceTempView('dim_payment_method')
         dim_location.createOrReplaceTempView('dim_location')
-
+        
+        #################################################################
+        # Registering facts as temporary views to use spark SQL
+        #################################################################
         fact_yellowtrip_df.createOrReplaceTempView('fact_yellowtrip_df')
 
         tbl_yellow_trips_dashboard = spark.sql(
@@ -122,13 +121,12 @@ class TblYellowTripsDashboard():
         kwargs = {
             'dataframe': df,
             'file_name': table_name,
-            'source': '',
+            'source': 'fact_yellowtrip_df',
             'destination': self.destination,
             'mode': write_mode,
-            'load_type': 'full',
             'partition_column': ','.join([partition_col for partition_col in partition_columns]),
             'format': table_format,
-            'log_table_name': 'metadata.silver_ingestion_log'
+            'layer': gold
         }
 
         return kwargs

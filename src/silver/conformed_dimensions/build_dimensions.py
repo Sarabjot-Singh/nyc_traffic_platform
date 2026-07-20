@@ -1,3 +1,4 @@
+import os
 import sys
 import yaml
 from pyspark.sql.functions import *
@@ -14,6 +15,7 @@ from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.aws import S3Util
 from src.common.database import Database
+from src.common.loader import Loader
 from repository.metadata_query import QueryStore
 
 
@@ -31,10 +33,11 @@ with open('config.yaml', 'r') as file:
 
 if __name__ == '__main__':
     # logger.info(f"{favicon['info']} Building Dimensions....")
+    file_name = os.path.abspath(__file__).split('/')[-1].split('.')[0]
     dimensions = dimensional_config['dimensions']
-    silver = config['layers']['silver']
+    layer = config['layers']['silver']
     bucket_name = config['storage']['bucket_name']
-    db_obj = Database()
+    loader = Loader()
 
     for dimension in dimensions:
         name = dimension['name']
@@ -46,18 +49,7 @@ if __name__ == '__main__':
         load_method = dimension['load_method']
         format = dimension['format']
 
-        s3_key = rf"s3a://{bucket_name}/{silver}/{module}/"
-
-        query = QueryStore().silver_load_log(
-            file_name=module
-            , source='seed_file'
-            , destination=s3_key
-            , method='initial'
-            , status='UPLOADING'
-            , error=None
-            , load_type=load_method
-        )
-        db_obj.execute(query=query)
+        s3_key = rf"s3a://{bucket_name}/{layer}/{module}/"
         
         imported_module = __import__(module_path, fromlist=[module])
 
@@ -66,23 +58,18 @@ if __name__ == '__main__':
 
         df = dimension_obj.initial_load()
         
-        df.write \
-            .format(format) \
-            .mode(load_method) \
-            .save(s3_key)
-        
-        logger.info(f"{favicon['right']} Successfully created dimension - {name}")
-        
-        query = QueryStore().silver_load_log(
-            file_name=module
-            , source='seed_file'
-            , destination=s3_key
-            , method='initial'
-            , status='SUCCESS'
-            , error=None
-            , load_type=load_method
-        )
-        db_obj.execute(query=query)
+        kwargs = {
+            'dataframe': df,
+            'file_name': file_name,
+            'source': 'seed_file',
+            'destination': s3_key,
+            'mode': load_method,
+            'partition_column': None,
+            'format': format,
+            'layer': layer
+        }
+
+        loader.load_dataframe(**kwargs)
 
 
         

@@ -1,4 +1,5 @@
 import sys
+import os
 import shutil
 import tempfile
 import requests
@@ -15,6 +16,7 @@ from src.common.logger import get_logger
 from src.common.favicon import favicon
 from src.common.spark import SparkManager
 from src.common.database import Database
+from src.common.loader import Loader
 from repository.metadata_query import QueryStore
 from src.bronze.yellow_trip.schema import schema
 
@@ -38,7 +40,7 @@ def ingest_data(
         start_month, 
         end_year=datetime.now().year, 
         end_month=datetime.now().month
-    ) -> None:
+    ):
     """Ingest NYC taxi parquet files for a range of year-month partitions.
 
     The function downloads each parquet file from the public NYC Taxi source,
@@ -95,45 +97,37 @@ def ingest_data(
         # Skip files that already completed successfully in the metadata log.
         # This prevents duplicate work and keeps repeated runs idempotent.
         if not is_file_present:
-            try:
-                upload_query = QueryStore().ingestion_log(file_name, url, s3_key, 'UPLOADING', None)
-                database_obj.execute(query=upload_query, params={})
+            # Download the parquet file to a temporary location before loading it with Spark.
+            with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
 
-                # Download the parquet file to a temporary location before loading it with Spark.
-                with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
+                with requests.get(url, stream=True) as response:
+                    response.raise_for_status()
+                    shutil.copyfileobj(response.raw, tmp)
 
-                    with requests.get(url, stream=True) as response:
-                        response.raise_for_status()
-                        shutil.copyfileobj(response.bronze, tmp)
+                # Make sure all bytes are written
+                tmp.flush()
 
-                    # Make sure all bytes are written
-                    tmp.flush()
+                # Read the temporary parquet file with Spark so the data can be validated
+                # and cast to the expected schema before writing to the bronze layer.
+                df = spark.read.parquet(tmp.name)
 
-                    # Read the temporary parquet file with Spark so the data can be validated
-                    # and cast to the expected schema before writing to the bronze layer.
-                    df = spark.read.parquet(tmp.name)
+                # Apply the bronze schema definitions only where the source columns exist.
+                for column, dtype in schema.items():
+                    if column in df.columns:
+                        df = df.withColumn(column, col(column).cast(dtype))
+        
+                kwargs = {
+                    'dataframe': df,
+                    'file_name': file_name,
+                    'source': url,
+                    'destination': s3_key,
+                    'mode': 'overwrite',
+                    'partition_column': None,
+                    'format': 'parquet',
+                    'layer': layer
+                }
 
-                    # Apply the bronze schema definitions only where the source columns exist.
-                    for column, dtype in schema.items():
-                        if column in df.columns:
-                            df = df.withColumn(column, col(column).cast(dtype))
-            
-                    # Write the curated parquet data to the bronze storage path.
-                    df.write \
-                        .mode("overwrite") \
-                        .parquet(s3_key)
-
-                # Record a successful bronze load in the metadata table.
-                # This gives downstream jobs a reliable audit trail for processed files.
-                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'SUCCESS', None)
-                database_obj.execute(query=success_query, params={})
-                logger.info(f"{favicon['right']} Successfully uploaded %s to S3", s3_key)
-
-            except Exception as e:
-                logger.info(f"{favicon['error']} Error occured during uploading file to S3: ", e)
-                # Mark the file as failed so it can be retried later by the next run.
-                success_query = QueryStore().ingestion_log(file_name, url, s3_key, 'FAILED', str(e))
-                database_obj.execute(query=success_query, params={})
+                loader.load_dataframe(**kwargs)
 
         else:
             logger.info(f"{favicon['info']} File %s altready present in the bucket", file_name)
@@ -144,11 +138,14 @@ if __name__ == "__main__":
     logger.info(f"{favicon['info']} Start fetching data from NYC CDN")
     spark_obj = SparkManager()
     spark = spark_obj.get_spark_session()
+    loader = Loader()
 
+    file_name = os.path.abspath(__file__).split('/')[-1].split('.')[0]
+    layer = config['layers']['bronze']
     start_year = bronze_config["datasets"]['yellow_trip']["start_year"]
     start_month = bronze_config["datasets"]['yellow_trip']["start_month"]
     end_year = bronze_config["datasets"]['yellow_trip']["end_year"]
     end_month = bronze_config["datasets"]['yellow_trip']["end_month"]
 
     # Please add end dated as per requirements, if not passed latest date will be considered for end year and end month
-    ingest_data(spark, start_year, start_month)
+    ingest_data(spark=spark, start_year=start_year, start_month=start_month)

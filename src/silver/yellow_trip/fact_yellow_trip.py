@@ -3,7 +3,6 @@ import sys
 import yaml
 from delta.tables import DeltaTable
 from urllib.parse import urlparse
-from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from pyspark.sql.functions import *
 from dotenv import load_dotenv
@@ -20,7 +19,6 @@ from src.common.loader import Loader
 from src.common.aws import S3Util
 from src.silver.base import Model
 from src.silver.validation import Test
-from repository.metadata_query import QueryStore
 
 load_dotenv()
 logger = get_logger()
@@ -43,7 +41,7 @@ class FactYellowTrip(Model):
 
     def __init__(self):
         """Initialize the model with its target destination path and logical name."""
-        self.refresh_type = 'incremental'
+        self.refresh_type = 'full'
         self.destination = rf"s3a://{bucket_name}/{layer}/{fact_name}/"
 
 
@@ -167,10 +165,9 @@ class FactYellowTrip(Model):
                     'source': partition,
                     'destination': self.destination,
                     'mode': 'append',
-                    'load_type': self.refresh_type,
                     'partition_column': ','.join([partition_col for partition_col in partition_columns]),
                     'format': table_format,
-                    'log_table_name': 'metadata.silver_ingestion_log'
+                    'layer': layer
                 }
                 
                 yield kwargs
@@ -198,11 +195,10 @@ class FactYellowTrip(Model):
                     AND TARGET.partition_day = SOURCE.partition_day 
                     """,
                 'file_name': fact_name,
-                'source': ','.join(path for path in file_path),
+                'source': file_path,
                 'destination': self.destination,
                 'method': 'merge',
-                'load_type': self.refresh_type,
-                'log_table_name': 'metadata.silver_ingestion_log'
+                'layer': layer
             }
 
             yield kwargs
